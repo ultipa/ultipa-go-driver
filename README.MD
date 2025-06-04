@@ -18,9 +18,9 @@ Read Ultipa Go SDK document  [ultipa.com](https://www.ultipa.com/document/ultipa
 ```go
 
 import (
-    " github.com/ultipa/ultipa-go-driver/sdk"
-    " github.com/ultipa/ultipa-go-driver/sdk/api"
-    " github.com/ultipa/ultipa-go-driver/sdk/configuration"
+    "github.com/ultipa/ultipa-go-driver/sdk"
+    "github.com/ultipa/ultipa-go-driver/sdk/api"
+    "github.com/ultipa/ultipa-go-driver/sdk/configuration"
 )
 
 config := &configuration.UltipaConfig{

@@ -8,7 +8,7 @@ import (
 )
 
 // Version represents the current version of the SDK.
-const Version = "5.0.1-s5.0"
+const Version = "5.1.1-s5.1"
 
 // NewUltipaDriver Create an Ultipa Client
 func NewUltipaDriver(config *configuration.UltipaConfig) (*api.UltipaAPI, error) {

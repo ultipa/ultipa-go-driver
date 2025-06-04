@@ -1,8 +1,8 @@
 package http
 
 import (
-	ultipa "github.com/ultipa/ultipa-go-sdk/rpc"
-	"github.com/ultipa/ultipa-go-sdk/sdk/structs"
+	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
+	"github.com/ultipa/ultipa-go-driver/sdk/structs"
 )
 
 type ExplainPlan struct {

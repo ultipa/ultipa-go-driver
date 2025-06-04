@@ -1,6 +1,6 @@
 package models
 
-import "github.com/ultipa/ultipa-go-sdk/sdk/structs"
+import "github.com/ultipa/ultipa-go-driver/sdk/structs"
 
 type GraphModel struct {
 	Graph   *structs.GraphSet

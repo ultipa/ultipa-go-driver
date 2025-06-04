@@ -8,8 +8,8 @@ package utils
 //	"fmt"
 //	"math"
 //	"strconv"
-//	ultipa "github.com/ultipa/ultipa-go-sdk/rpc"
-//	"github.com/ultipa/ultipa-go-sdk/types"
+//	ultipa " github.com/ultipa/ultipa-go-driver/rpc"
+//	" github.com/ultipa/ultipa-go-driver/types"
 //)
 //
 //var ultipaTime = UltipaTime{}

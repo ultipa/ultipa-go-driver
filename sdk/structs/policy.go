@@ -3,7 +3,7 @@ package structs
 import (
 	"fmt"
 
-	"github.com/ultipa/ultipa-go-sdk/sdk/utils"
+	"github.com/ultipa/ultipa-go-driver/sdk/utils"
 )
 
 // Policy create().policy(

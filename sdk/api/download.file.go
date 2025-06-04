@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	ultipa "github.com/ultipa/ultipa-go-sdk/rpc"
-	"github.com/ultipa/ultipa-go-sdk/sdk/configuration"
+	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
+	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
 )
 
 func (api *UltipaAPI) DownloadAlgoResultFile(fileName string, jobId string, config *configuration.RequestConfig, receive func(data []byte) error) error {

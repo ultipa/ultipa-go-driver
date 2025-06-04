@@ -6,25 +6,13 @@ package http
 
 import (
 	"fmt"
-	ultipa "github.com/ultipa/ultipa-go-sdk/rpc"
+	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
 	"io"
 )
 
-type UQLResponseStream struct {
-	DataItemMap map[string]struct {
-		DataItem *DataItem
-		Index    int
-	}
-	Reply     *ultipa.QueryReply
-	Status    *Status
-	Statistic *Statistic
-	AliasList []string
-	Resp      ultipa.UltipaRpcs_QueryClient
-}
+func NewUQLResponseStream(resp ultipa.UltipaRpcs_QueryClient) (response *Response, err error) {
 
-func NewUQLResponseStream(resp ultipa.UltipaRpcs_QueryClient) (response *UQLResponseStream, err error) {
-
-	response = &UQLResponseStream{
+	response = &Response{
 		Resp:   resp,
 		Status: &Status{},
 		DataItemMap: map[string]struct {
@@ -36,7 +24,7 @@ func NewUQLResponseStream(resp ultipa.UltipaRpcs_QueryClient) (response *UQLResp
 	return response, nil
 }
 
-func (r *UQLResponseStream) Recv(cb func(*Response) error) (err error) {
+func (r *Response) Recv(cb func(*Response) error) (err error) {
 	//if !fetch {
 	//	return nil, r.Resp.CloseSend()
 	//}
@@ -99,12 +87,4 @@ func (r *UQLResponseStream) Recv(cb func(*Response) error) (err error) {
 
 	return nil
 
-}
-
-func (r *UQLResponseStream) NeedRedirect() bool {
-	return r.Status.Code == ultipa.ErrorCode_RAFT_REDIRECT
-}
-
-func (r *UQLResponseStream) Close() error {
-	return r.Resp.CloseSend()
 }

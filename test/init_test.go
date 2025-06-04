@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/joho/godotenv"
-	"github.com/ultipa/ultipa-go-sdk/sdk"
-	"github.com/ultipa/ultipa-go-sdk/sdk/api"
-	"github.com/ultipa/ultipa-go-sdk/sdk/configuration"
+	"github.com/ultipa/ultipa-go-driver/sdk"
+	"github.com/ultipa/ultipa-go-driver/sdk/api"
+	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
 )
 
 var env map[string]string

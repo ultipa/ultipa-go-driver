@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	ultipa "github.com/ultipa/ultipa-go-sdk/rpc"
+	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
 )
 
 func TestSlice(t *testing.T) {

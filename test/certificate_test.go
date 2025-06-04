@@ -3,7 +3,7 @@ package test
 import (
 	"testing"
 
-	"github.com/ultipa/ultipa-go-sdk/sdk/utils"
+	"github.com/ultipa/ultipa-go-driver/sdk/utils"
 )
 
 func TestGetCertificate(t *testing.T) {

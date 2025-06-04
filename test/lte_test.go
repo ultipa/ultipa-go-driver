@@ -4,7 +4,7 @@ import (
 	"log"
 	"testing"
 
-	ultipa "github.com/ultipa/ultipa-go-sdk/rpc"
+	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
 )
 
 func TestLte(t *testing.T) {

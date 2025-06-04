@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ultipa/ultipa-go-sdk/sdk"
-	"github.com/ultipa/ultipa-go-sdk/sdk/configuration"
+	"github.com/ultipa/ultipa-go-driver/sdk"
+	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
 )
 
 func TestHeartBeat(t *testing.T) {

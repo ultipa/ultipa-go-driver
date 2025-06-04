@@ -1,6 +1,6 @@
 package structs
 
-import "github.com/ultipa/ultipa-go-sdk/sdk/types"
+import "github.com/ultipa/ultipa-go-driver/sdk/types"
 
 type MetaData struct {
 	ID     types.ID

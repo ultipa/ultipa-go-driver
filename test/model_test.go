@@ -4,9 +4,9 @@ import (
 	"log"
 	"testing"
 
-	ultipa "github.com/ultipa/ultipa-go-sdk/rpc"
-	"github.com/ultipa/ultipa-go-sdk/sdk/models"
-	"github.com/ultipa/ultipa-go-sdk/sdk/structs"
+	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
+	"github.com/ultipa/ultipa-go-driver/sdk/models"
+	"github.com/ultipa/ultipa-go-driver/sdk/structs"
 )
 
 func TestCreateModel(t *testing.T) {

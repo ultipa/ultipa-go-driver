@@ -3,16 +3,16 @@ package test
 import (
 	"fmt"
 	"github.com/pieterclaerhout/go-waitgroup"
-	"github.com/ultipa/ultipa-go-sdk/sdk"
-	"github.com/ultipa/ultipa-go-sdk/sdk/utils/logger"
+	"github.com/ultipa/ultipa-go-driver/sdk"
+	"github.com/ultipa/ultipa-go-driver/sdk/utils/logger"
 	"log"
 	"sync"
 	"testing"
 	"time"
 
-	ultipa "github.com/ultipa/ultipa-go-sdk/rpc"
-	"github.com/ultipa/ultipa-go-sdk/sdk/configuration"
-	"github.com/ultipa/ultipa-go-sdk/sdk/printers"
+	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
+	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
+	"github.com/ultipa/ultipa-go-driver/sdk/printers"
 )
 
 func TestUQL(t *testing.T) {

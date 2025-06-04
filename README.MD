@@ -4,23 +4,23 @@
 
 ```shell
 
-go get github.com/ultipa/ultipa-go-sdk
+go get  github.com/ultipa/ultipa-go-driver
 go mod tidy
 
 ```
 
 ## Document
 
-Read Ultipa Go SDK document  [ultipa.com](https://www.ultipa.com/document/ultipa-drivers/go-installation/v4.5)
+Read Ultipa Go SDK document  [ultipa.com](https://www.ultipa.com/document/ultipa-drivers/go-installation/v5.0)
 
 ## Create Client
 
 ```go
 
 import (
-    "github.com/ultipa/ultipa-go-sdk/sdk"
-    "github.com/ultipa/ultipa-go-sdk/sdk/api"
-    "github.com/ultipa/ultipa-go-sdk/sdk/configuration"
+    " github.com/ultipa/ultipa-go-driver/sdk"
+    " github.com/ultipa/ultipa-go-driver/sdk/api"
+    " github.com/ultipa/ultipa-go-driver/sdk/configuration"
 )
 
 config := &configuration.UltipaConfig{

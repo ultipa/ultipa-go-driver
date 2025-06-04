@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/ultipa/ultipa-go-sdk/sdk/utils/logger"
+	"github.com/ultipa/ultipa-go-driver/sdk/utils/logger"
 )
 
 func PrintUqlErr(errmsg string) {

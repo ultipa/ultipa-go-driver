@@ -10,10 +10,10 @@ package api
 import (
 	"errors"
 	"fmt"
-	ultipa "github.com/ultipa/ultipa-go-sdk/rpc"
-	"github.com/ultipa/ultipa-go-sdk/sdk/configuration"
-	"github.com/ultipa/ultipa-go-sdk/sdk/http"
-	"github.com/ultipa/ultipa-go-sdk/sdk/structs"
+	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
+	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
+	"github.com/ultipa/ultipa-go-driver/sdk/http"
+	"github.com/ultipa/ultipa-go-driver/sdk/structs"
 )
 
 func (api *UltipaAPI) CreateIndex(dbType ultipa.DBType, source string, indexName string, config *configuration.RequestConfig) (jobResponse *http.JobResponse, err error) {

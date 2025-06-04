@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	ultipa "github.com/ultipa/ultipa-go-sdk/rpc"
-	"github.com/ultipa/ultipa-go-sdk/sdk/configuration"
-	"github.com/ultipa/ultipa-go-sdk/sdk/types"
-	"github.com/ultipa/ultipa-go-sdk/sdk/utils"
+	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
+	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
+	"github.com/ultipa/ultipa-go-driver/sdk/types"
+	"github.com/ultipa/ultipa-go-driver/sdk/utils"
 )
 
 type Node struct {

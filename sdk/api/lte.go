@@ -4,9 +4,9 @@ import (
 	"errors"
 	"fmt"
 
-	ultipa "github.com/ultipa/ultipa-go-sdk/rpc"
-	"github.com/ultipa/ultipa-go-sdk/sdk/configuration"
-	"github.com/ultipa/ultipa-go-sdk/sdk/http"
+	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
+	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
+	"github.com/ultipa/ultipa-go-driver/sdk/http"
 )
 
 func (api *UltipaAPI) Lte(dbType ultipa.DBType, schemaName, propertyName string, config *configuration.RequestConfig) (jobResponse *http.JobResponse, err error) {

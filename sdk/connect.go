@@ -10,8 +10,8 @@ package sdk
 //	"strings"
 //	"sync"
 //	"time"
-//	ultipa "github.com/ultipa/ultipa-go-sdk/rpc"
-//	"github.com/ultipa/ultipa-go-sdk/utils"
+//	ultipa " github.com/ultipa/ultipa-go-driver/rpc"
+//	" github.com/ultipa/ultipa-go-driver/utils"
 //
 //	"google.golang.org/grpc"
 //	"google.golang.org/grpc/credentials"

@@ -2,9 +2,9 @@ package sdk
 
 //
 //import (
-//	ultipa "github.com/ultipa/ultipa-go-sdk/rpc"
-//	"github.com/ultipa/ultipa-go-sdk/types"
-//	"github.com/ultipa/ultipa-go-sdk/utils"
+//	ultipa " github.com/ultipa/ultipa-go-driver/rpc"
+//	" github.com/ultipa/ultipa-go-driver/types"
+//	" github.com/ultipa/ultipa-go-driver/utils"
 //)
 //
 //type GetLeaderRequest struct {

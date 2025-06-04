@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/pterm/pterm"
-	"github.com/ultipa/ultipa-go-sdk/sdk/printers"
-	"github.com/ultipa/ultipa-go-sdk/sdk/structs"
+	"github.com/ultipa/ultipa-go-driver/sdk/printers"
+	"github.com/ultipa/ultipa-go-driver/sdk/structs"
 )
 
 func TestExplain(t *testing.T) {

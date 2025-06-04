@@ -2,7 +2,7 @@ package test
 
 import (
 	"fmt"
-	"github.com/ultipa/ultipa-go-sdk/sdk/http"
+	"github.com/ultipa/ultipa-go-driver/sdk/http"
 	"log"
 	"testing"
 )

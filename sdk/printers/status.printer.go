@@ -3,7 +3,7 @@ package printers
 import (
 	"fmt"
 
-	"github.com/ultipa/ultipa-go-sdk/sdk/http"
+	"github.com/ultipa/ultipa-go-driver/sdk/http"
 )
 
 func PrintStatistics(stats *http.Statistic) {

@@ -1,15 +1,15 @@
 package test
 
 import (
-	"github.com/ultipa/ultipa-go-sdk/sdk/configuration"
-	http2 "github.com/ultipa/ultipa-go-sdk/sdk/http"
+	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
+	http2 "github.com/ultipa/ultipa-go-driver/sdk/http"
 	"log"
 	"testing"
 
-	ultipa "github.com/ultipa/ultipa-go-sdk/rpc"
-	"github.com/ultipa/ultipa-go-sdk/sdk/printers"
-	"github.com/ultipa/ultipa-go-sdk/sdk/structs"
-	"github.com/ultipa/ultipa-go-sdk/utils"
+	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
+	"github.com/ultipa/ultipa-go-driver/sdk/printers"
+	"github.com/ultipa/ultipa-go-driver/sdk/structs"
+	"github.com/ultipa/ultipa-go-driver/utils"
 )
 
 func TestShowSchemas(t *testing.T) {

@@ -5,12 +5,12 @@ import (
 	"log"
 	"testing"
 
-	ultipa "github.com/ultipa/ultipa-go-sdk/rpc"
-	"github.com/ultipa/ultipa-go-sdk/sdk/configuration"
-	"github.com/ultipa/ultipa-go-sdk/sdk/printers"
-	"github.com/ultipa/ultipa-go-sdk/sdk/structs"
-	"github.com/ultipa/ultipa-go-sdk/sdk/types"
-	ultipaUtils "github.com/ultipa/ultipa-go-sdk/sdk/utils"
+	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
+	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
+	"github.com/ultipa/ultipa-go-driver/sdk/printers"
+	"github.com/ultipa/ultipa-go-driver/sdk/structs"
+	"github.com/ultipa/ultipa-go-driver/sdk/types"
+	ultipaUtils "github.com/ultipa/ultipa-go-driver/sdk/utils"
 )
 
 func TestInsertNodeWithListProperty(t *testing.T) {

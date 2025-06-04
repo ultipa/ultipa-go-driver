@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/alexeyco/simpletable"
-	"github.com/ultipa/ultipa-go-sdk/sdk/structs"
+	"github.com/ultipa/ultipa-go-driver/sdk/structs"
 )
 
 func PrintGraphSet(graphs []*structs.GraphSet) {

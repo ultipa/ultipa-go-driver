@@ -8,11 +8,11 @@
 package test
 
 import (
-	ultipa "github.com/ultipa/ultipa-go-sdk/rpc"
+	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
 	"log"
 	"testing"
 
-	"github.com/ultipa/ultipa-go-sdk/utils"
+	"github.com/ultipa/ultipa-go-driver/utils"
 )
 
 func TestCreateIndex(t *testing.T) {

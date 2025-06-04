@@ -1,7 +1,7 @@
 package test
 
 import (
-	"github.com/ultipa/ultipa-go-sdk/sdk/api"
+	"github.com/ultipa/ultipa-go-driver/sdk/api"
 	"testing"
 )
 

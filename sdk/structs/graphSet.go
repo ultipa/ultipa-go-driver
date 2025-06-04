@@ -4,8 +4,8 @@ import (
 	"errors"
 	"strings"
 
-	ultipa "github.com/ultipa/ultipa-go-sdk/rpc"
-	"github.com/ultipa/ultipa-go-sdk/sdk/types"
+	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
+	"github.com/ultipa/ultipa-go-driver/sdk/types"
 )
 
 type TruncateParams struct {

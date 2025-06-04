@@ -2,9 +2,9 @@
 package sdk
 
 import (
-	"github.com/ultipa/ultipa-go-sdk/sdk/api"
-	"github.com/ultipa/ultipa-go-sdk/sdk/configuration"
-	"github.com/ultipa/ultipa-go-sdk/sdk/connection"
+	"github.com/ultipa/ultipa-go-driver/sdk/api"
+	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
+	"github.com/ultipa/ultipa-go-driver/sdk/connection"
 )
 
 // Version represents the current version of the SDK.

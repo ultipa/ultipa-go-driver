@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ultipa/ultipa-go-sdk/sdk/utils"
+	"github.com/ultipa/ultipa-go-driver/sdk/utils"
 )
 
 func TestNewTimeFromString(t *testing.T) {

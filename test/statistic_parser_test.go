@@ -3,9 +3,9 @@ package test
 import (
 	"testing"
 
-	ultipa "github.com/ultipa/ultipa-go-sdk/rpc"
-	"github.com/ultipa/ultipa-go-sdk/sdk/http"
-	"github.com/ultipa/ultipa-go-sdk/utils"
+	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
+	"github.com/ultipa/ultipa-go-driver/sdk/http"
+	"github.com/ultipa/ultipa-go-driver/utils"
 )
 
 func TestParseStatistic(t *testing.T) {

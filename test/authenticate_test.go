@@ -3,7 +3,7 @@ package test
 import (
 	"testing"
 
-	ultipa "github.com/ultipa/ultipa-go-sdk/rpc"
+	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
 )
 
 func TestAuthenticate(t *testing.T) {

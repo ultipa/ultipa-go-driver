@@ -1,6 +1,6 @@
 package http
 
-import ultipa "github.com/ultipa/ultipa-go-sdk/rpc"
+import ultipa "github.com/ultipa/ultipa-go-driver/rpc"
 
 type StatusCode = int
 

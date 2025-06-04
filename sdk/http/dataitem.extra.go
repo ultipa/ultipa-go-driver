@@ -1,7 +1,7 @@
 package http
 
 import (
-	"github.com/ultipa/ultipa-go-sdk/sdk/structs"
+	"github.com/ultipa/ultipa-go-driver/sdk/structs"
 )
 
 func (di *DataItem) AsFirstNode() (node *structs.Node, err error) {

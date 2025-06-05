@@ -40,31 +40,34 @@ resp, err := client.UQL("find().nodes() return nodes limit 1", nil)
 nodes := resp.alias("nodes").asNodes()
 ```
 
-## UQLResponse Interface
+## Response Interface
 
 - Alias(alias string) : *DataItem
-- Alias(index int) : *DataItem
 
 
 ## DataItem Interface
 
-- asNodes() : (nodes []*structs.Node, schemas map[string]*structs.Schema, err error)
-- asEdges() : (edges []*structs.Edge, schemas map[string]*structs.Schema, err error)
-- asTable() : (table *structs.Table, err error)
-- asAttr()  : (arr *structs.Array, err error)
-- AsGraphSets() (graphs []*structs.GraphSet, err error)
-- asSchemas() : (schemas []*structs.Schema, err error)
-- AsProperties() : (properties []*structs.Property, err error)
-- AsIndexes() : (indexes []*structs.Index, err error)
-- AsFullTexts() : (fullTextIndexes []*structs.Index, err error)
-- asAlgos() : ([]*structs.Algo, error)
-- AsGraph() : (graph *structs.Graph, err error)
-- asAny() : (interface{}, error)
-- AsPolicies() : (policies []*structs.Policy, err error)
-- AsTops() : (tops []*structs.Top, err error)
-- AsStats() : (stat *structs.Stat, err error)
-- AsPrivileges() : (privileges []*structs.Privilege, err error)
-- AsUsers() : (users []*structs.User, err error)
+- AsFirstNode() (node *structs.Node, err error)
+- AsFirstEdge() (node *structs.Edge, err error)
+- AsNodes() (nodes []*structs.Node, schemas map[string]*structs.Schema, err error)
+- AsEdges() (edges []*structs.Edge, schemas map[string]*structs.Schema, err error)
+- AsTable() (table *structs.Table, err error)
+- AsAttr() (*structs.Attr, error)
+- AsGraphSets() (graphSets []*structs.GraphSet, err error)
+- AsSchemas() (schemas []*structs.Schema, err error)
+- AsProperties() (properties []*structs.Property, err error)
+- AsIndexes() (indexes []*structs.Index, err error)
+- AsFullTexts() (fullTextIndexes []*structs.Index, err error)
+- AsAlgos() ([]*structs.Algo, error)
+- AsGraph() (graph *structs.Graph, err error)
+- AsAny() (interface{}, error)
+- AsPolicies() (policies []*structs.Policy, err error)
+- AsProcesses() (tops []*structs.Process, err error)
+- AsPrivileges() (privileges []*structs.Privilege, err error)
+- AsUsers() (users []*structs.User, err error)
+- AsJobs() (jobs []*structs.Job, err error)
+- AsHDCGraphs() (projections []*structs.HDCGraph, err error)
+- AsProjections() (projections []*structs.Projection, err error)
 
 ## Batch Insert
 

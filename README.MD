@@ -1,4 +1,4 @@
-# Ultipa GO SDK
+# Ultipa GO Driver
 
 ## Installation
 
@@ -11,7 +11,7 @@ go mod tidy
 
 ## Document
 
-Read Ultipa Go SDK document  [ultipa.com](https://www.ultipa.com/document/ultipa-drivers/go-installation/v5.0)
+Read Ultipa Go Driver document  [ultipa.com](https://www.ultipa.com/document/ultipa-drivers/go-installation/v5.0)
 
 ## Create Client
 
@@ -50,9 +50,7 @@ nodes := resp.alias("nodes").asNodes()
 
 - asNodes() : (nodes []*structs.Node, schemas map[string]*structs.Schema, err error)
 - asEdges() : (edges []*structs.Edge, schemas map[string]*structs.Schema, err error)
-- asPaths() : (paths []*structs.Path, err error)
 - asTable() : (table *structs.Table, err error)
-- asArray() : (arr *structs.Array, err error)
 - asAttr()  : (arr *structs.Array, err error)
 - AsGraphSets() (graphs []*structs.GraphSet, err error)
 - asSchemas() : (schemas []*structs.Schema, err error)
@@ -63,8 +61,6 @@ nodes := resp.alias("nodes").asNodes()
 - AsGraph() : (graph *structs.Graph, err error)
 - asAny() : (interface{}, error)
 - AsPolicies() : (policies []*structs.Policy, err error)
-- AsExtas() : (extas []*structs.Exta, err error)
-- AsTasks() : (tasks []*structs.Task, err error)
 - AsTops() : (tops []*structs.Top, err error)
 - AsStats() : (stat *structs.Stat, err error)
 - AsPrivileges() : (privileges []*structs.Privilege, err error)

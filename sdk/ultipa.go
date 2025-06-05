@@ -19,6 +19,7 @@ func NewUltipaDriver(config *configuration.UltipaConfig) (*api.UltipaAPI, error)
 	if err != nil {
 		return nil, err
 	}
+
 	config.Password = encryptedPwd
 
 	// set connection pool

@@ -12,7 +12,7 @@ all: tidy format lint test check-coverage
 # ==============================================================================
 # Build options
 
-ROOT_PACKAGE = ultipa-go-sdk
+ROOT_PACKAGE = ultipa-go-driver
 VERSION_PACKAGE = v4.5.0-s4.5
 
 # ==============================================================================

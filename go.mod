@@ -8,7 +8,6 @@ require (
 	github.com/fatih/color v1.15.0
 	github.com/jinzhu/copier v0.3.5
 	github.com/joho/godotenv v1.5.1
-	github.com/lrita/cmap v0.0.0-20220613164007-7fbf4a5bd437
 	github.com/pieterclaerhout/go-waitgroup v1.0.7
 	github.com/pterm/pterm v0.12.65
 	golang.org/x/sync v0.3.0

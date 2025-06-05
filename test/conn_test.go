@@ -25,7 +25,7 @@ func TestNewConn(t *testing.T) {
 	h.Write([]byte(password))
 	pass := hex.EncodeToString(h.Sum(nil))
 
-	conn, err := grpc.Dial("192.168.1.85:61299", grpc.WithInsecure(), grpc.WithDefaultCallOptions())
+	conn, err := grpc.Dial("192.xx.1.xx:61299", grpc.WithInsecure(), grpc.WithDefaultCallOptions())
 
 	for i := 0; i < 100; i++ {
 		//conn, err := grpc.Dial("210.13.32.146:60074", grpc.WithInsecure(), grpc.WithDefaultCallOptions())

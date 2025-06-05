@@ -43,6 +43,7 @@ nodes := resp.alias("nodes").asNodes()
 ## Response Interface
 
 - Alias(alias string) : *DataItem
+- Get(index int) (di *DataItem)
 
 
 ## DataItem Interface

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/ultipa/ultipa-go-driver/sdk/types"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/types"
 )
 
 func TestString(t *testing.T) {

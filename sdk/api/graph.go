@@ -3,10 +3,10 @@ package api
 import (
 	"errors"
 	"fmt"
-	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
-	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
-	"github.com/ultipa/ultipa-go-driver/sdk/http"
-	"github.com/ultipa/ultipa-go-driver/sdk/structs"
+	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/configuration"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/http"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/structs"
 	"strings"
 )
 

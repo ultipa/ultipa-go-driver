@@ -2,9 +2,9 @@ package api
 
 import (
 	"fmt"
-	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
-	"github.com/ultipa/ultipa-go-driver/sdk/http"
-	"github.com/ultipa/ultipa-go-driver/sdk/structs"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/configuration"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/http"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/structs"
 )
 
 func (api *UltipaAPI) ShowLicense(config *configuration.RequestConfig) (license *structs.License, err error) {

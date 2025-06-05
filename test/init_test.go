@@ -1,15 +1,15 @@
 package test
 
 import (
-	"github.com/ultipa/ultipa-go-driver/sdk/printers"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/printers"
 	"log"
 	"strings"
 	"testing"
 
 	"github.com/joho/godotenv"
-	"github.com/ultipa/ultipa-go-driver/sdk"
-	"github.com/ultipa/ultipa-go-driver/sdk/api"
-	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/api"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/configuration"
 )
 
 var env map[string]string

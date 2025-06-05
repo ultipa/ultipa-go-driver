@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/ultipa/ultipa-go-driver/sdk/structs"
-	"github.com/ultipa/ultipa-go-driver/utils"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/structs"
+	"github.com/ultipa/ultipa-go-driver/v5/utils"
 )
 
 func TestShowPolicy(t *testing.T) {

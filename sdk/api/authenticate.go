@@ -3,8 +3,8 @@ package api
 import (
 	"errors"
 
-	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
-	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
+	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/configuration"
 )
 
 func (api *UltipaAPI) Authenticate(authenticateType ultipa.AuthenticateType, uql string, config *configuration.RequestConfig) (*ultipa.AuthenticateReply, error) {

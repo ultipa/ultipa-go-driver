@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ultipa/ultipa-go-driver/sdk/utils"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/utils"
 )
 
 func TestEasyUqlParse(t *testing.T) {

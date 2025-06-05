@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
-	"github.com/ultipa/ultipa-go-driver/sdk"
-	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
+	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/configuration"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )

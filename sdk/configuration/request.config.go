@@ -1,6 +1,6 @@
 package configuration
 
-import ultipa "github.com/ultipa/ultipa-go-driver/rpc"
+import ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
 
 type RequestConfig struct {
 	Graph   string // Graphset Name

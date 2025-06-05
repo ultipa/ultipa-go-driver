@@ -11,7 +11,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ultipa/ultipa-go-driver/sdk/structs"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/structs"
 )
 
 func CheckValuesAndProperties(properties []*structs.Property, values *structs.Values, index int) (err error) {

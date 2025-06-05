@@ -4,15 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ultipa/ultipa-go-driver/sdk/types"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/types"
 	"log"
 	"strconv"
 	"strings"
 	"time"
 
-	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
-	"github.com/ultipa/ultipa-go-driver/sdk/structs"
-	"github.com/ultipa/ultipa-go-driver/sdk/utils"
+	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/structs"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/utils"
 	"google.golang.org/protobuf/proto"
 )
 

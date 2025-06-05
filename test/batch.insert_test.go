@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/pieterclaerhout/go-waitgroup"
-	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
-	"github.com/ultipa/ultipa-go-driver/sdk/api"
-	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
-	"github.com/ultipa/ultipa-go-driver/sdk/structs"
-	"github.com/ultipa/ultipa-go-driver/sdk/utils"
+	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/api"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/configuration"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/structs"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/utils"
 )
 
 func TestBatchInsertNodes(t *testing.T) {

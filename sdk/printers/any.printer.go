@@ -2,12 +2,12 @@ package printers
 
 import (
 	"fmt"
-	"github.com/ultipa/ultipa-go-driver/sdk/utils/logger"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/utils/logger"
 	"log"
 	"strings"
 
-	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
-	"github.com/ultipa/ultipa-go-driver/sdk/http"
+	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/http"
 )
 
 func PrintAny(dataitem *http.DataItem) {

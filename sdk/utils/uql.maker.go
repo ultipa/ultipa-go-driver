@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ultipa/ultipa-go-driver/utils"
+	"github.com/ultipa/ultipa-go-driver/v5/utils"
 )
 
 type UQLMAKER struct {

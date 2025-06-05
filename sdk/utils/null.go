@@ -3,8 +3,8 @@ package utils
 import (
 	"fmt"
 
-	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
-	"github.com/ultipa/ultipa-go-driver/sdk/utils/logger"
+	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/utils/logger"
 	"google.golang.org/protobuf/proto"
 )
 

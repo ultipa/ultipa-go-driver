@@ -3,7 +3,7 @@ package utils
 import (
 	"fmt"
 
-	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
+	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
 )
 
 func CheckAliasExist(reply *ultipa.QueryReply, alias string) bool {

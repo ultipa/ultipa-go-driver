@@ -1,8 +1,8 @@
 package api
 
 import (
-	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
-	"github.com/ultipa/ultipa-go-driver/sdk/http"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/configuration"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/http"
 )
 
 func (api *UltipaAPI) Stats(config *configuration.RequestConfig) (stats *http.Response, err error) {

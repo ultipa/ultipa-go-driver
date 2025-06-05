@@ -7,9 +7,9 @@ package http
 import (
 	"io"
 
-	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
-	"github.com/ultipa/ultipa-go-driver/sdk/structs"
-	"github.com/ultipa/ultipa-go-driver/sdk/utils"
+	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/structs"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/utils"
 )
 
 type Response struct {

@@ -5,10 +5,10 @@ import (
 	"strconv"
 	"time"
 
-	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
-	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
-	"github.com/ultipa/ultipa-go-driver/sdk/connection"
-	"github.com/ultipa/ultipa-go-driver/sdk/http"
+	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/configuration"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/connection"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/http"
 )
 
 // Uql, Insert, Export, Download ... API methods

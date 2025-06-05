@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/alexeyco/simpletable"
-	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
-	"github.com/ultipa/ultipa-go-driver/sdk/structs"
-	"github.com/ultipa/ultipa-go-driver/sdk/utils/logger"
+	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/structs"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/utils/logger"
 )
 
 func PrintAttr(attr *structs.Attr) {

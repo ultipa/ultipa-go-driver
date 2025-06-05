@@ -3,7 +3,7 @@ package test
 import (
 	"testing"
 
-	"github.com/ultipa/ultipa-go-driver/sdk/api"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/api"
 )
 
 func TestCheckGraphName(t *testing.T) {

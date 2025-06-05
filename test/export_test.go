@@ -1,11 +1,11 @@
 package test
 
 import (
-	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
+	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
 	"testing"
 
-	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
-	"github.com/ultipa/ultipa-go-driver/sdk/structs"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/configuration"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/structs"
 )
 
 func TestExportAsNodesEdges(t *testing.T) {

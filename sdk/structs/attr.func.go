@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
+	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
 )
 
 // ListAttrAsAttrNodes returns AttrNodes, if PropertyType of attr is LIST and inner result type is Node

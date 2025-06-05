@@ -1,7 +1,7 @@
 package test
 
 import (
-	"github.com/ultipa/ultipa-go-driver/sdk/printers"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/printers"
 	"testing"
 )
 

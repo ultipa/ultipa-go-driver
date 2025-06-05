@@ -2,8 +2,8 @@ package structs
 
 import (
 	"errors"
-	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
-	"github.com/ultipa/ultipa-go-driver/sdk/utils"
+	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/utils"
 )
 
 //type Schemas struct {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/pterm/pterm"
-	"github.com/ultipa/ultipa-go-driver/sdk/structs"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/structs"
 )
 
 type TreeNode struct {

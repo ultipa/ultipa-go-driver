@@ -1,6 +1,6 @@
 package structs
 
-import "github.com/ultipa/ultipa-go-driver/sdk/types"
+import "github.com/ultipa/ultipa-go-driver/v5/sdk/types"
 
 type Graph struct {
 	Paths []*Path

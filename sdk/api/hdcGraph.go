@@ -3,9 +3,9 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
-	"github.com/ultipa/ultipa-go-driver/sdk/http"
-	"github.com/ultipa/ultipa-go-driver/sdk/structs"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/configuration"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/http"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/structs"
 	"strings"
 )
 

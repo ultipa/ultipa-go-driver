@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"strconv"
 
-	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
+	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
 )
 
 // Statistic Store the returned statistical information

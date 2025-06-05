@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
+	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
 )
 
 type Property struct {

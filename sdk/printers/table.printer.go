@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/alexeyco/simpletable"
-	"github.com/ultipa/ultipa-go-driver/sdk/structs"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/structs"
 )
 
 func PrintTable(tableData *structs.Table) {

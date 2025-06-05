@@ -1,4 +1,4 @@
-module github.com/ultipa/ultipa-go-driver
+module github.com/ultipa/ultipa-go-driver/v5
 
 go 1.13
 

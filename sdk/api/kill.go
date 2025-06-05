@@ -3,8 +3,8 @@ package api
 import (
 	"fmt"
 
-	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
-	"github.com/ultipa/ultipa-go-driver/sdk/http"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/configuration"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/http"
 )
 
 func (api *UltipaAPI) Kill(processId string, config *configuration.RequestConfig) (resp *http.Response, err error) {

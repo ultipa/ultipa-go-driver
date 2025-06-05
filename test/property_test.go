@@ -8,14 +8,14 @@
 package test
 
 import (
-	"github.com/ultipa/ultipa-go-driver/sdk/configuration"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/configuration"
 	"log"
 	"testing"
 
-	ultipa "github.com/ultipa/ultipa-go-driver/rpc"
-	"github.com/ultipa/ultipa-go-driver/sdk/http"
-	"github.com/ultipa/ultipa-go-driver/sdk/printers"
-	"github.com/ultipa/ultipa-go-driver/sdk/structs"
+	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/http"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/printers"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/structs"
 )
 
 func TestShowProperty(t *testing.T) {

@@ -1,7 +1,6 @@
 package test
 
 import (
-	"github.com/ultipa/ultipa-go-driver/v5/sdk/printers"
 	"log"
 	"strings"
 	"testing"
@@ -23,7 +22,7 @@ var DEBUG bool
 func TestMain(m *testing.M) {
 	//setup()
 
-	//conn, err := grpc.Dial("192.168.1.85:61299", grpc.WithInsecure())
+	//conn, err := grpc.Dial("192.xx.1.xx:61299", grpc.WithInsecure())
 	//if err != nil {
 	//    log.Fatal(err)
 	//}
@@ -36,28 +35,11 @@ func TestMain(m *testing.M) {
 }
 
 func TestPing(t *testing.T) {
-	config := &configuration.UltipaConfig{
-		Hosts:        []string{"eedcfcd239f44b878a94a74ded5b35d6s.eu-south-1.cloud.ultipa.com:8443"},
-		Username:     "root",
-		Password:     "8bde9fa3a6824bab86618788e5ca4fcb",
-		DefaultGraph: "retail_test",
+	client, _ = GetClient(hosts, graph)
+	ok, err := client.Test(nil)
+	if !ok {
+		t.Fatal(err)
 	}
-
-	cli, err := sdk.NewUltipaDriver(config)
-	if err != nil {
-		log.Fatalln("Failed to connect to Ultipa:", err)
-	}
-	graphs, err := cli.ShowGraph(nil)
-	if err != nil {
-		log.Fatalln("show graph error:", err)
-	}
-	printers.PrintGraphSet(graphs)
-
-	//client, _ = GetClient(hosts, graph)
-	//ok, err := client.Test(nil)
-	//if !ok {
-	//	t.Fatal(err)
-	//}
 
 }
 

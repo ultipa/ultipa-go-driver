@@ -4,7 +4,7 @@
 
 ```shell
 
-go get  github.com/ultipa/ultipa-go-driver
+go get  github.com/ultipa/ultipa-go-driver/v5
 go mod tidy
 
 ```
@@ -18,9 +18,9 @@ Read Ultipa Go Driver document  [ultipa.com](https://www.ultipa.com/document/ult
 ```go
 
 import (
-    "github.com/ultipa/ultipa-go-driver/sdk"
-    "github.com/ultipa/ultipa-go-driver/sdk/api"
-    "github.com/ultipa/ultipa-go-driver/sdk/configuration"
+    "github.com/ultipa/ultipa-go-driver/v5/sdk"
+    "github.com/ultipa/ultipa-go-driver/v5/sdk/api"
+    "github.com/ultipa/ultipa-go-driver/v5/sdk/configuration"
 )
 
 config := &configuration.UltipaConfig{

@@ -166,7 +166,7 @@ func (api *UltipaAPI) queryStream(query string, queryType ultipa.QueryType, cb f
 	return uqlResp.Recv(cb)
 }
 
-func (api *UltipaAPI) UQLStream(uql string, cb func(*http.Response) error, config *configuration.RequestConfig) error {
+func (api *UltipaAPI) UqlStream(uql string, cb func(*http.Response) error, config *configuration.RequestConfig) error {
 	return api.queryStream(uql, ultipa.QueryType_UQL, cb, config)
 }
 

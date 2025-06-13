@@ -20,7 +20,7 @@ var graph string
 var DEBUG bool
 
 func TestMain(m *testing.M) {
-	//setup()
+	setup()
 
 	//conn, err := grpc.Dial("192.xx.1.xx:61299", grpc.WithInsecure())
 	//if err != nil {

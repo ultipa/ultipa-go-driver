@@ -46,6 +46,7 @@ func batchInsert(schema string, conn *api.UltipaAPI) []*structs.Node {
 		value := rand.Intn(1000)
 		node.Set("username", fmt.Sprintf("user_%d", value))
 		node.Set("password", RandStr(2000))
+		node.Set("timestamp", 1234567890123456789)
 
 		nodes = append(nodes, node)
 
@@ -63,7 +64,11 @@ func batchInsert(schema string, conn *api.UltipaAPI) []*structs.Node {
 				}, &structs.Property{
 					Name: "password",
 					Type: ultipa.PropertyType_TEXT,
-				})
+				},
+					&structs.Property{
+						Name: "timestamp",
+						Type: ultipa.PropertyType_TIMESTAMP,
+					})
 
 				_, err := conn.InsertNodesBatchBySchema(schema, nodes, &configuration.InsertRequestConfig{
 					InsertType: ultipa.InsertType_OVERWRITE,
@@ -92,17 +97,24 @@ func createSchema(t *testing.T, schema string, conn *api.UltipaAPI) {
 		Description: "A Schema with 2 properties",
 		Properties: []*structs.Property{
 			{
-				Name: "username",
-				Type: ultipa.PropertyType_STRING,
+				Schema: schema,
+				Name:   "username",
+				Type:   ultipa.PropertyType_STRING,
 			},
 			{
-				Name: "password",
-				Type: ultipa.PropertyType_TEXT,
+				Schema: schema,
+				Name:   "password",
+				Type:   ultipa.PropertyType_TEXT,
+			},
+			{
+				Schema: schema,
+				Name:   "timestamp",
+				Type:   ultipa.PropertyType_TIMESTAMP,
 			},
 		},
 	}
 
-	_, err := conn.CreateSchemaIfNotExist(newSchemaWithProperties, false, nil)
+	_, err := conn.CreateSchemaIfNotExist(newSchemaWithProperties, true, nil)
 	if err != nil {
 		t.Error("failed to create schema", err)
 	}

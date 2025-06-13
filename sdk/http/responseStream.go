@@ -86,5 +86,4 @@ func (r *Response) Recv(cb func(*Response) error) (err error) {
 	}
 
 	return nil
-
 }

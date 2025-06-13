@@ -4,7 +4,7 @@ import (
 	"github.com/ultipa/ultipa-go-driver/v5/sdk/structs"
 )
 
-func (di *DataItem) AsFirstNode() (node *structs.Node, err error) {
+func (di *DataItem) AsFirstNode() (*structs.Node, error) {
 	nodes, _, err := di.AsNodes()
 
 	if len(nodes) < 1 {
@@ -14,7 +14,7 @@ func (di *DataItem) AsFirstNode() (node *structs.Node, err error) {
 	return nodes[0], err
 }
 
-func (di *DataItem) AsFirstEdge() (node *structs.Edge, err error) {
+func (di *DataItem) AsFirstEdge() (*structs.Edge, error) {
 	edges, _, err := di.AsEdges()
 
 	if len(edges) < 1 {

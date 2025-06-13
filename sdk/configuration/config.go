@@ -28,7 +28,8 @@ type UltipaConfig struct {
 
 // var DefaultTimeout int32 = 1000
 var DefaultTimeout int32 = math.MaxInt32
-var DefaultGraph = "default"
+
+// var DefaultGraph = "default"
 var DefaultRecvSize = 1024 * 1024 * 32
 
 // Deprecated: Should use NewUltipa directly
@@ -50,9 +51,9 @@ func (config *UltipaConfig) FillDefault() {
 		config.MaxRecvSize = DefaultRecvSize // 10MB
 	}
 
-	if config.DefaultGraph == "" {
-		config.DefaultGraph = DefaultGraph
-	}
+	//if config.DefaultGraph == "" {
+	//    config.DefaultGraph = DefaultGraph
+	//}
 	//
 	//if config.CurrentGraph == "" {
 	//	config.CurrentGraph = "default"

@@ -39,7 +39,7 @@ func TestGqlStream(t *testing.T) {
 		return nil
 	}
 
-	err := client.GQLStream(uql, cb, nil)
+	err := client.GqlStream(uql, cb, nil)
 
 	if err != nil {
 		t.Fatal(err)

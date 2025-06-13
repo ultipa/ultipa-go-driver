@@ -22,7 +22,7 @@ func TestUQLStream(t *testing.T) {
 		return nil
 	}
 
-	err := client.UQLStream(uql, cb, nil)
+	err := client.UqlStream(uql, cb, nil)
 
 	if err != nil {
 		t.Fatal(err)

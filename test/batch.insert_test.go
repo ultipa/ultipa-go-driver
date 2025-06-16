@@ -342,3 +342,55 @@ func TestBatchInsert2(t *testing.T) {
 	}
 
 }
+
+func Test_xx(t *testing.T) {
+	requestConfig := &configuration.RequestConfig{
+		Graph: "social",
+	}
+
+	insertRequestConfig := &configuration.InsertRequestConfig{
+		RequestConfig: requestConfig,
+	}
+
+	schema := &structs.Schema{
+		Name: "follows",
+		Properties: []*structs.Property{
+			{Name: "createdOn", Type: ultipa.PropertyType_TIMESTAMP},
+			{Name: "weight", Type: ultipa.PropertyType_FLOAT},
+		},
+	}
+
+	edges := []*structs.Edge{
+		{
+			From: "U1",
+			To:   "U2",
+			Values: &structs.Values{
+				Data: map[string]interface{}{
+					"createdOn": "2024-5-6",
+					"weight":    float32(3.2),
+				},
+			},
+		},
+		{
+			From: "U2",
+			To:   "U1",
+			Values: &structs.Values{
+				Data: map[string]interface{}{
+					"createdOn": 1715169600,
+					"weight":    nil,
+				},
+			},
+		},
+	}
+
+	insertResponse, err := client.InsertEdgesBatchBySchema(schema, edges, insertRequestConfig)
+	if err != nil {
+		log.Fatalf("Insert failed: %v", err)
+	}
+
+	if insertResponse != nil && len(insertResponse.ErrorItems) > 0 {
+		fmt.Println("Error items:", insertResponse.ErrorItems)
+	} else {
+		fmt.Println("All edges inserted successfully")
+	}
+}

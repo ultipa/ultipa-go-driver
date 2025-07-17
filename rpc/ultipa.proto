@@ -1,8 +1,7 @@
 syntax = "proto3";
 
-option go_package = ".;ultipa";
-
 package ultipa;
+option go_package = ".;ultipa";
 
 // The ultipa service definition.
 service UltipaRpcs {
@@ -78,6 +77,7 @@ enum ResultType {
   RESULT_TYPE_EDGE = 3;
   RESULT_TYPE_ATTR = 4;
   RESULT_TYPE_TABLE = 5;
+  RESULT_TYPE_GRAPH = 6;
 }
 
 message ResultAlias {
@@ -96,9 +96,22 @@ message QueryReply {
   repeated EdgeAlias edges = 7;
   repeated AttrAlias attrs = 8;
   repeated Table tables = 10;
-
   Table statistics = 11;
   ExplainPlan explain_plan = 12;
+
+  repeated GraphAlias graphs = 13;
+}
+message UuidPath {
+  repeated uint64 uuids = 1 [jstype = JS_STRING];
+}
+message Graph {
+  repeated UuidPath paths = 1;
+  map<uint64, EntityTable> node_map = 2;
+  map<uint64, EntityTable> edge_map = 3;
+}
+message GraphAlias {
+  Graph path = 1;
+  string alias = 2;
 }
 
 message PathAlias {
@@ -141,6 +154,19 @@ message AttrMapData {
   bool is_null = 3;
 }
 
+message AttrDateData {
+  int32 year = 1;
+  int32 month = 2;
+  int32 day = 3;
+  bool is_null = 4;
+}
+
+message AttrDuration {
+  int32 seconds = 1;
+  int32 nanos = 2;
+  bool is_null = 3;
+}
+
 message UserSettingRequest {
   enum OPTION {
     OPT_GET = 0;
@@ -172,7 +198,6 @@ message DownloadFileReply {
 //导出数据
 // limit < 0 全量导出
 // limit >= 0 导出limit条
-//limit abandon
 message ExportRequest {
   DBType db_type = 1;
   int32 limit = 2;
@@ -289,6 +314,14 @@ enum PropertyType {
   MAP = 16;
   NULL_ = 17;
   BOOL = 18;
+  LOCAL_DATETIME = 19;
+  ZONED_DATETIME = 20;
+  DATE = 21;
+  ZONED_TIME = 22;
+  LOCAL_TIME = 23;
+  YEAR_TO_MONTH = 24;
+  DAY_TO_SECOND = 25;
+  JSON = 26;
 }
 
 enum ErrorCode {
@@ -416,6 +449,12 @@ message ListData {
   repeated bytes values = 1;
   bool is_null = 2;
 }
+
+message JsonData {
+  bytes values = 1;
+  bool is_null = 2;
+}
+
 message SetData {
   repeated bytes values = 1;
   bool is_null = 2;
@@ -428,7 +467,6 @@ message MapData {
   repeated MapValue values = 1;
   bool is_null = 2;
 }
-
 
 enum JOB_STATUS {
   JOB_PENDING = 0;

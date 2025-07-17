@@ -59,6 +59,15 @@ var PropertyMap = map[string]ultipa.PropertyType{
 	"decimal":    ultipa.PropertyType_DECIMAL,
 	"NULL_":      ultipa.PropertyType_NULL_,
 	"bool":       ultipa.PropertyType_BOOL,
+	// add in server 5.2.xx
+	"local datetime":          ultipa.PropertyType_LOCAL_DATETIME,
+	"zoned datetime":          ultipa.PropertyType_ZONED_DATETIME,
+	"date":                    ultipa.PropertyType_DATE,
+	"local time":              ultipa.PropertyType_ZONED_TIME,
+	"zoned time":              ultipa.PropertyType_LOCAL_TIME,
+	"duration(year to month)": ultipa.PropertyType_YEAR_TO_MONTH,
+	"duration(day to second)": ultipa.PropertyType_DAY_TO_SECOND,
+	"json":                    ultipa.PropertyType_JSON,
 }
 
 var PropertyReverseMap = map[ultipa.PropertyType]string{
@@ -84,6 +93,15 @@ var PropertyReverseMap = map[ultipa.PropertyType]string{
 	ultipa.PropertyType_DECIMAL:   "decimal",
 	ultipa.PropertyType_NULL_:     "NULL_",
 	ultipa.PropertyType_BOOL:      "bool",
+	// add in server 5.2.x
+	ultipa.PropertyType_LOCAL_DATETIME: "local datetime",
+	ultipa.PropertyType_ZONED_DATETIME: "zoned datetime",
+	ultipa.PropertyType_DATE:           "date",
+	ultipa.PropertyType_ZONED_TIME:     "local time",
+	ultipa.PropertyType_LOCAL_TIME:     "zoned time",
+	ultipa.PropertyType_YEAR_TO_MONTH:  "duration(year to month)",
+	ultipa.PropertyType_DAY_TO_SECOND:  "duration(day to second)",
+	ultipa.PropertyType_JSON:           "json",
 }
 
 type DecimalExtra struct {
@@ -95,7 +113,6 @@ func MarshalDecimalExtra(d *DecimalExtra) ([]byte, error) {
 	if d == nil || (d.Precision == 0 && d.Scale == 0) {
 		return []byte(""), nil
 	}
-
 	return json.Marshal(d)
 }
 

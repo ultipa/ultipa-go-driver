@@ -10,19 +10,20 @@ import (
 	"google.golang.org/grpc"
 )
 
-func (api *UltipaAPI) Export(exportRequest *ultipa.ExportRequest, config *configuration.RequestConfig, cb func(nodes []*structs.Node, edges []*structs.Edge) error) error {
+func (api *UltipaAPI) Export(exportRequest *ultipa.ExportRequest, cb func(nodes []*structs.Node, edges []*structs.Edge) error, config *configuration.RequestConfig) error {
 	var err error
 
 	client, err := api.GetControlClient(config)
-	if err != nil {
-		return err
-	}
 
 	ctx, cancel, err := api.Pool.NewContext(config)
 	if err != nil {
 		return err
 	}
 	defer cancel()
+
+	if exportRequest.Limit == 0 {
+		exportRequest.Limit = -1
+	}
 
 	resp, respErr := client.Export(ctx, exportRequest, grpc.MaxCallRecvMsgSize(api.Config.MaxRecvSize), grpc.MaxCallSendMsgSize(api.Config.MaxRecvSize))
 

@@ -53,7 +53,6 @@ func (api *UltipaAPI) InsertNodesBatch(table *ultipa.EntityTable, config *config
 }
 
 func (api *UltipaAPI) InsertNodesBatchBySchema(schema *structs.Schema, rows []*structs.Node, config *configuration.InsertRequestConfig) (*http.InsertResponse, error) {
-
 	if config == nil {
 		config = &configuration.InsertRequestConfig{}
 	}

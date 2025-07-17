@@ -1,8 +1,10 @@
 package utils
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -486,4 +488,166 @@ func RemoveTimezone(dateString string) string {
 	dateString = timezoneRegex.ReplaceAllString(dateString, "")
 	dateString = strings.Replace(dateString, "T", " ", -1)
 	return dateString
+}
+
+func decodeUtpDate(v []byte) (string, error) {
+	if len(v) == 0 {
+		return "", nil
+	}
+	if len(v) < 4 {
+		return "", errors.New("invalid date length")
+	}
+	value := binary.BigEndian.Uint32(v)
+	year := int((value>>9)&0x7FFF) - 16384
+	month := (value >> 5) & 0x0F
+	day := value & 0x1F
+	return fmt.Sprintf("%04d-%02d-%02d", year, month, day), nil
+}
+
+func decodeUtpTime(v []byte, withTZ bool) (string, error) {
+	if len(v) == 0 {
+		return "", nil
+	}
+
+	if len(v) < 8 {
+		return "", errors.New("invalid time length")
+	}
+	value := binary.BigEndian.Uint64(v)
+
+	hour := (value >> 59) & 0x1F
+	minute := (value >> 53) & 0x3F
+	second := (value >> 47) & 0x3F
+	rawTZ := int32((value >> 40) & 0x7F)
+	if rawTZ&0x40 != 0 {
+		rawTZ |= ^0x7F // sign extend
+	}
+	nano := value & 0x3FFFFFFFFF
+
+	t := fmt.Sprintf("%02d:%02d:%02d", hour, minute, second)
+	if nano > 0 {
+		nanoStr := fmt.Sprintf("%09d", nano)
+		nanoStr = trimTrailingZeros(nanoStr)
+		t += "." + nanoStr
+	}
+	if withTZ && rawTZ != 0 {
+		totalMin := rawTZ * 15
+		sign := "+"
+		if totalMin < 0 {
+			sign = "-"
+			totalMin = -totalMin
+		}
+		t += fmt.Sprintf("%s%02d%02d", sign, totalMin/60, totalMin%60)
+	}
+	return t, nil
+}
+
+func decodeUtpDatetime(v []byte, withTZ bool) (string, error) {
+	if len(v) == 0 {
+		return "", nil
+	}
+
+	if len(v) < 12 {
+		return "", errors.New("invalid datetime length")
+	}
+	dateStr, err := decodeUtpDate(v[:4])
+	if err != nil {
+		return "", err
+	}
+	timeStr, err := decodeUtpTime(v[4:], withTZ)
+	if err != nil {
+		return "", err
+	}
+	return dateStr + " " + timeStr, nil
+}
+
+func decodeUtpDurationYTM(v []byte) (string, error) {
+	if len(v) == 0 {
+		return "", nil
+	}
+
+	if len(v) < 4 {
+		return "", errors.New("invalid duration length")
+	}
+	total := int32(binary.BigEndian.Uint32(v))
+	isNeg := total < 0
+	months := int(math.Abs(float64(total)))
+	years := months / 12
+	remain := months % 12
+
+	result := "P"
+	if isNeg {
+		result = "-" + result
+	}
+	if years > 0 {
+		result += fmt.Sprintf("%dY", years)
+	}
+	if remain > 0 {
+		result += fmt.Sprintf("%dM", remain)
+	}
+	if years == 0 && remain == 0 {
+		result += "0M"
+	}
+	return result, nil
+}
+
+func decodeUtpDurationDTS(v []byte) (string, error) {
+	if len(v) == 0 {
+		return "", nil
+	}
+
+	if len(v) < 8 {
+		return "", errors.New("invalid DTS duration length")
+	}
+	totalNs := int64(binary.BigEndian.Uint64(v))
+	isNeg := totalNs < 0
+	ns := totalNs
+	if isNeg {
+		ns = -ns
+	}
+
+	oneSec := int64(time.Second)
+	oneMin := int64(time.Minute)
+	oneHour := int64(time.Hour)
+	oneDay := 24 * oneHour
+
+	days := ns / oneDay
+	ns %= oneDay
+	hours := ns / oneHour
+	ns %= oneHour
+	minutes := ns / oneMin
+	ns %= oneMin
+	seconds := ns / oneSec
+	nanos := ns % oneSec
+
+	result := "P"
+	if isNeg {
+		result = "-" + result
+	}
+	result += fmt.Sprintf("%dD", days)
+	if hours != 0 || minutes != 0 || seconds != 0 || nanos != 0 {
+		result += "T"
+	}
+	if hours != 0 {
+		result += fmt.Sprintf("%dH", hours)
+	}
+	if minutes != 0 {
+		result += fmt.Sprintf("%dM", minutes)
+	}
+	if seconds != 0 || nanos != 0 {
+		result += fmt.Sprintf("%d", seconds)
+		if nanos != 0 {
+			nanoStr := fmt.Sprintf("%09d", nanos)
+			nanoStr = trimTrailingZeros(nanoStr)
+			result += "." + nanoStr
+		}
+		result += "S"
+	}
+	return result, nil
+}
+
+func trimTrailingZeros(s string) string {
+	for len(s) > 0 && s[len(s)-1] == '0' {
+		s = s[:len(s)-1]
+	}
+	return s
 }

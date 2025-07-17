@@ -89,6 +89,21 @@ func ConvertBytesToInterface(bs []byte, t ultipa.PropertyType, subTypes []ultipa
 			return nil, nil
 		}
 		return strconv.ParseBool(serverValue)
+
+	case ultipa.PropertyType_DATE:
+		return decodeUtpDate(bs)
+	case ultipa.PropertyType_LOCAL_TIME:
+		return decodeUtpTime(bs, false)
+	case ultipa.PropertyType_ZONED_TIME:
+		return decodeUtpTime(bs, true)
+	case ultipa.PropertyType_LOCAL_DATETIME:
+		return decodeUtpDatetime(bs, false)
+	case ultipa.PropertyType_ZONED_DATETIME:
+		return decodeUtpDatetime(bs, true)
+	case ultipa.PropertyType_YEAR_TO_MONTH:
+		return decodeUtpDurationYTM(bs)
+	case ultipa.PropertyType_DAY_TO_SECOND:
+		return decodeUtpDurationDTS(bs)
 	default:
 		return nil, nil
 	}

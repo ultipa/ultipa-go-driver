@@ -261,7 +261,7 @@ func TestUQLFindNodesWithList(t *testing.T) {
 
 	//client, _ := GetClient(hosts, graph)
 
-	uql := "find().nodes({@People}) as nodes return nodes{*}"
+	uql := `find().nodes() as nodes return nodes{*}`
 	resp, err := client.Uql(uql, nil)
 	if err != nil {
 		t.Fatal(err)

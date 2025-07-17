@@ -17,6 +17,16 @@ const (
 
 type PrivilegeLevel int
 
+func (p PrivilegeLevel) String() string {
+	switch p {
+	case GraphPrivilege:
+		return "graphPrivilege"
+	case SystemPrivilege:
+		return "systemPrivilege"
+	}
+	return "unknown privilegeLevel"
+}
+
 const (
 	GraphPrivilege PrivilegeLevel = iota
 	SystemPrivilege

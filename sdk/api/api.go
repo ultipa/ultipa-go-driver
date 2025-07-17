@@ -132,7 +132,6 @@ func (api *UltipaAPI) query(query string, queryType ultipa.QueryType, config *co
 	if config != nil && config.Host != "" {
 		return uqlResp, err
 	}
-
 	//if uqlResp.NeedRedirect() {
 	//    err = api.Pool.RefreshClusterInfo(conf.CurrentGraph)
 	//    if err != nil {

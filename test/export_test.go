@@ -37,13 +37,11 @@ func TestExportAsNodesEdges(t *testing.T) {
 		SelectProperties: properties,
 		Schema:           schema.Name,
 	}
-	err := client.Export(exportRequest,
-		&configuration.RequestConfig{},
-		func(nodes []*structs.Node, edges []*structs.Edge) error {
-			//printers.PrintNodes(nodes, map[string]*structs.Schema{schemaName: schema})
-			t.Log(len(nodes))
-			return nil
-		})
+	err := client.Export(exportRequest, func(nodes []*structs.Node, edges []*structs.Edge) error {
+		//printers.PrintNodes(nodes, map[string]*structs.Schema{schemaName: schema})
+		t.Log(len(nodes))
+		return nil
+	}, &configuration.RequestConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -101,12 +101,12 @@ func TestCreateProperty(t *testing.T) {
 	// CreateTime Node Property
 	newProp := &structs.Property{
 		Schema: "default",
-		Name:   `"""`,
-		Type:   ultipa.PropertyType_BOOL,
+		Name:   `ts_ds`,
+		Type:   ultipa.PropertyType_DAY_TO_SECOND,
 	}
 
 	resp, err := client.CreateProperty(ultipa.DBType_DBNODE, newProp, &configuration.RequestConfig{
-		Graph: "go_sdk_test",
+		Graph: "gosdk_time",
 	})
 	if err != nil {
 		t.Fatal(err)

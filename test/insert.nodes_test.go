@@ -459,3 +459,67 @@ func TestRpcNode(t *testing.T) {
 	fmt.Println(re)
 	fmt.Println(err)
 }
+
+func TestInsertTime(t *testing.T) {
+	schema := structs.NewSchema("default")
+	schema.Properties = append(schema.Properties, &structs.Property{
+		Name: "local datetime",
+		Type: ultipa.PropertyType_LOCAL_DATETIME,
+	}, &structs.Property{
+		Name: "zoned datetime",
+		Type: ultipa.PropertyType_ZONED_DATETIME,
+	}, &structs.Property{
+		Name: "date",
+		Type: ultipa.PropertyType_DATE,
+	}, &structs.Property{
+		Name: "local time",
+		Type: ultipa.PropertyType_LOCAL_TIME,
+	}, &structs.Property{
+		Name: "zoned time",
+		Type: ultipa.PropertyType_ZONED_TIME,
+	}, &structs.Property{
+		Name: "duration(year to month)",
+		Type: ultipa.PropertyType_YEAR_TO_MONTH,
+	}, &structs.Property{
+		Name: "duration(day to second)",
+		Type: ultipa.PropertyType_DAY_TO_SECOND,
+	},
+	)
+
+	var nodes []*structs.Node
+	node1 := structs.NewNode()
+	//node1.ID = "1"
+	//node1.Set("local datetime", "2008-08-08 01:02:03.123456789")
+	//node1.Set("zoned datetime", "2008-08-08 01:02:03.123456789+0800")
+	//node1.Set("date", "2008-08-08")
+	//node1.Set("local time", "01:02:03.123456789")
+	//node1.Set("zoned time", "01:02:03.123456789+0800")
+	//node1.Set("duration(year to month)", "P1Y2M")
+	//node1.Set("duration(day to second)", "P1DT2H3M4.123456789S")
+
+	node1.ID = "2"
+	node1.Set("local datetime", "")
+	node1.Set("zoned datetime", "")
+	node1.Set("date", "")
+	node1.Set("local time", "")
+	node1.Set("zoned time", "")
+	node1.Set("duration(year to month)", "")
+	node1.Set("duration(day to second)", "")
+
+	nodes = append(nodes, node1)
+
+	resp, err := client.InsertNodesBatchBySchema(schema, nodes, &configuration.InsertRequestConfig{
+		InsertType: ultipa.InsertType_OVERWRITE,
+	})
+
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	if resp.Status.Code != ultipa.ErrorCode_SUCCESS {
+		log.Println(resp.Status.Message)
+		t.Log(resp.Status.Message)
+	}
+	log.Println(resp.Statistic.EngineCost, "|", resp.Statistic.TotalCost)
+
+}

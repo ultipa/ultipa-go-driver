@@ -63,8 +63,8 @@ var PropertyMap = map[string]ultipa.PropertyType{
 	"local datetime":          ultipa.PropertyType_LOCAL_DATETIME,
 	"zoned datetime":          ultipa.PropertyType_ZONED_DATETIME,
 	"date":                    ultipa.PropertyType_DATE,
-	"local time":              ultipa.PropertyType_ZONED_TIME,
-	"zoned time":              ultipa.PropertyType_LOCAL_TIME,
+	"zoned time":              ultipa.PropertyType_ZONED_TIME,
+	"local time":              ultipa.PropertyType_LOCAL_TIME,
 	"duration(year to month)": ultipa.PropertyType_YEAR_TO_MONTH,
 	"duration(day to second)": ultipa.PropertyType_DAY_TO_SECOND,
 	"json":                    ultipa.PropertyType_JSON,
@@ -97,8 +97,8 @@ var PropertyReverseMap = map[ultipa.PropertyType]string{
 	ultipa.PropertyType_LOCAL_DATETIME: "local datetime",
 	ultipa.PropertyType_ZONED_DATETIME: "zoned datetime",
 	ultipa.PropertyType_DATE:           "date",
-	ultipa.PropertyType_ZONED_TIME:     "local time",
-	ultipa.PropertyType_LOCAL_TIME:     "zoned time",
+	ultipa.PropertyType_ZONED_TIME:     "zoned time",
+	ultipa.PropertyType_LOCAL_TIME:     "local time",
 	ultipa.PropertyType_YEAR_TO_MONTH:  "duration(year to month)",
 	ultipa.PropertyType_DAY_TO_SECOND:  "duration(day to second)",
 	ultipa.PropertyType_JSON:           "json",
@@ -152,7 +152,8 @@ func (p *Property) SetTypeByString(s string) {
 	// decimal typeStr "decimal(x,y)"
 	// list typeStr "string[]"
 
-	s = strings.ReplaceAll(s, " ", "")
+	// adjust time : local time.....
+	//s = strings.ReplaceAll(s, " ", "")
 
 	// list
 	if strings.HasSuffix(s, "[]") {

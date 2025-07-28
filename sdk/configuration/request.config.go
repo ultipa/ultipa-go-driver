@@ -11,7 +11,7 @@ type RequestConfig struct {
 	//UseControl     bool        // Use Control Node( global master )
 	//Uql            string // for Go Only, used for inner program
 	Timezone       string // name of time zone , e.g. Aisa/Shanghai
-	TimezoneOffset int64  // seconds that elapse from UTC, prior to TimeZone
+	TimezoneOffset string // seconds that elapse from UTC, prior to TimeZone
 	Thread         uint32 // used for uql request
 	//MaxPkgSize     int    // max package size in bytes, for both sending and receiving, if not set, default is 10M
 }

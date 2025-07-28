@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -626,13 +627,43 @@ func GetLocationFromConfig(req *configuration.RequestConfig) *time.Location {
 	if req == nil {
 		return nil
 	}
-	if req.TimezoneOffset != 0 {
-		return time.FixedZone("UTC", int(req.TimezoneOffset))
+	if req.TimezoneOffset != "" {
+		offsetSeconds, err := parseTimezoneOffset(req.TimezoneOffset)
+		if err == nil {
+			return time.FixedZone("UTC", offsetSeconds)
+		}
 	} else if req.Timezone != "" {
 		return getLocationFromTimezone(req.Timezone)
 	}
 
 	return nil
+}
+
+func parseTimezoneOffset(offset string) (int, error) {
+	if offset == "" {
+		return 0, nil
+	}
+
+	// 正则匹配格式 ±hh:mm 或 ±hhmm
+	re := regexp.MustCompile(`^([+-])(\d{2}):?(\d{2})$`)
+	matches := re.FindStringSubmatch(offset)
+	if len(matches) != 4 {
+		return 0, fmt.Errorf("invalid timezoneOffset format: %s", offset)
+	}
+
+	sign := matches[1]
+	hours, _ := strconv.Atoi(matches[2])
+	minutes, _ := strconv.Atoi(matches[3])
+
+	if hours > 23 || minutes > 59 {
+		return 0, fmt.Errorf("invalid hour/minute in timezoneOffset: %s", offset)
+	}
+
+	total := hours*3600 + minutes*60
+	if sign == "-" {
+		total = -total
+	}
+	return total, nil
 }
 
 func getLocationFromTimezone(timezone string) *time.Location {

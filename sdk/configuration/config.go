@@ -3,6 +3,7 @@ package configuration
 import (
 	"io/ioutil"
 	"math"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -65,6 +66,7 @@ func (config *UltipaConfig) FillDefault() {
 	if config.PasswordEncrypt == "" {
 		config.PasswordEncrypt = "MD5"
 	}
+
 }
 
 func (config *UltipaConfig) MergeRequestConfig(rConfig *RequestConfig) *UltipaConfig {
@@ -104,11 +106,11 @@ func (config *UltipaConfig) ToContextKV(rConfig *RequestConfig) []string {
 		//"cluster_id",
 		//config.CurrentClusterId,
 	}
-	if rConfig == nil || (rConfig.TimezoneOffset == 0 && rConfig.Timezone == "") {
+	if rConfig == nil || (rConfig.TimezoneOffset == "" && rConfig.Timezone == "") {
 		_, offset := time.Now().Zone()
 		headers = append(headers, "tz_offset", strconv.Itoa(offset))
-	} else if rConfig.TimezoneOffset != 0 {
-		headers = append(headers, "tz_offset", strconv.FormatInt(rConfig.TimezoneOffset, 10))
+	} else if rConfig.TimezoneOffset != "" {
+		headers = append(headers, "tz_offset", rConfig.TimezoneOffset)
 	} else if rConfig.Timezone != "" {
 		headers = append(headers, "tz", rConfig.Timezone)
 	}
@@ -136,4 +138,16 @@ func LoadConfigFromYAML(file string) (*UltipaConfig, error) {
 	//}
 
 	return config, nil
+}
+
+func isValidTimezoneOffset(offset string) bool {
+	if offset == "" {
+		return true // 空字符串合法
+	}
+
+	// 支持 ±hh:mm 或 ±hhmm，小时00-23，分钟00-59
+	pattern := `^[+-](?:[01][0-9]|2[0-3]):?[0-5][0-9]$`
+	re := regexp.MustCompile(pattern)
+
+	return re.MatchString(offset)
 }

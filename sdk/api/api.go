@@ -232,11 +232,11 @@ func (api *UltipaAPI) buildQueryRequest(query string, queryType ultipa.QueryType
 	if config.Thread > 0 {
 		uqlRequest.ThreadNum = config.Thread
 	}
-	if config.TimezoneOffset == 0 && config.Timezone == "" {
+	if config.TimezoneOffset == "" && config.Timezone == "" {
 		_, offset := time.Now().Zone()
 		uqlRequest.TzOffset = strconv.Itoa(offset)
-	} else if config.TimezoneOffset != 0 {
-		uqlRequest.TzOffset = strconv.FormatInt(config.TimezoneOffset, 10)
+	} else if config.TimezoneOffset != "" {
+		uqlRequest.TzOffset = config.TimezoneOffset
 	} else if config.Timezone != "" {
 		uqlRequest.Tz = config.Timezone
 	}

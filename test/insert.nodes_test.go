@@ -465,25 +465,29 @@ func TestInsertTime(t *testing.T) {
 	schema.Properties = append(schema.Properties, &structs.Property{
 		Name: "local datetime",
 		Type: ultipa.PropertyType_LOCAL_DATETIME,
-	}, &structs.Property{
-		Name: "zoned datetime",
-		Type: ultipa.PropertyType_ZONED_DATETIME,
-	}, &structs.Property{
-		Name: "date",
-		Type: ultipa.PropertyType_DATE,
-	}, &structs.Property{
-		Name: "local time",
-		Type: ultipa.PropertyType_LOCAL_TIME,
-	}, &structs.Property{
-		Name: "zoned time",
-		Type: ultipa.PropertyType_ZONED_TIME,
-	}, &structs.Property{
-		Name: "duration(year to month)",
-		Type: ultipa.PropertyType_YEAR_TO_MONTH,
-	}, &structs.Property{
-		Name: "duration(day to second)",
-		Type: ultipa.PropertyType_DAY_TO_SECOND,
 	},
+	//&structs.Property{
+	//    Name: "zoned datetime",
+	//    Type: ultipa.PropertyType_ZONED_DATETIME,
+	//}, &structs.Property{
+	//    Name: "date",
+	//    Type: ultipa.PropertyType_DATE,
+	//}, &structs.Property{
+	//    Name: "local time",
+	//    Type: ultipa.PropertyType_LOCAL_TIME,
+	//}, &structs.Property{
+	//    Name: "zoned time",
+	//    Type: ultipa.PropertyType_ZONED_TIME,
+	//}, &structs.Property{
+	//    Name: "duration(year to month)",
+	//    Type: ultipa.PropertyType_YEAR_TO_MONTH,
+	//}, &structs.Property{
+	//    Name: "duration(day to second)",
+	//    Type: ultipa.PropertyType_DAY_TO_SECOND,
+	//}, &structs.Property{
+	//    Name: "pp",
+	//    Type: ultipa.PropertyType_POINT,
+	//},
 	)
 
 	var nodes []*structs.Node
@@ -497,18 +501,21 @@ func TestInsertTime(t *testing.T) {
 	//node1.Set("duration(year to month)", "P1Y2M")
 	//node1.Set("duration(day to second)", "P1DT2H3M4.123456789S")
 
-	node1.ID = "2"
-	node1.Set("local datetime", "")
-	node1.Set("zoned datetime", "")
-	node1.Set("date", "")
-	node1.Set("local time", "")
-	node1.Set("zoned time", "")
-	node1.Set("duration(year to month)", "")
-	node1.Set("duration(day to second)", "")
+	node1.ID = "auto12"
+	node1.Schema = "default"
+	node1.Set("local datetime", "-0099-01-01 10:00:00.123456789")
+	//node1.Set("zoned datetime", "")
+	//node1.Set("date", "")
+	//node1.Set("local time", "")
+	//node1.Set("zoned time", "")
+	//node1.Set("duration(year to month)", "")
+	//node1.Set("duration(day to second)", "")
+	node1.Set("pp", "point(1 11)")
+	//node1.Set("ss", []string{})
 
 	nodes = append(nodes, node1)
 
-	resp, err := client.InsertNodesBatchBySchema(schema, nodes, &configuration.InsertRequestConfig{
+	resps, err := client.InsertNodesBatchAuto(nodes, &configuration.InsertRequestConfig{
 		InsertType: ultipa.InsertType_OVERWRITE,
 	})
 
@@ -516,10 +523,12 @@ func TestInsertTime(t *testing.T) {
 		log.Fatalln(err)
 	}
 
-	if resp.Status.Code != ultipa.ErrorCode_SUCCESS {
-		log.Println(resp.Status.Message)
-		t.Log(resp.Status.Message)
+	for _, resp := range resps {
+		if resp.Status.Code != ultipa.ErrorCode_SUCCESS {
+			log.Println(resp.Status.Message)
+			t.Log(resp.Status.Message)
+		}
+		log.Println(resp.Statistic.EngineCost, "|", resp.Statistic.TotalCost)
 	}
-	log.Println(resp.Statistic.EngineCost, "|", resp.Statistic.TotalCost)
 
 }

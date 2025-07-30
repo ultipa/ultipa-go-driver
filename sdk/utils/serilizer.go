@@ -320,11 +320,13 @@ func SerializeSetData(set interface{}, subTypes []ultipa.PropertyType, req *conf
 	if len(subTypes) == 0 {
 		return nil, errors.New("subTypes is not specified, unable to serialize SetData")
 	}
+
 	if set == nil {
 		setData := &ultipa.SetData{}
 		setData.IsNull = true
 		return proto.Marshal(setData)
 	}
+
 	vi := reflect.ValueOf(set)
 	setData := &ultipa.SetData{}
 	for index := 0; index < vi.Len(); index++ {

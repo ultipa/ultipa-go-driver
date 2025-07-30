@@ -124,8 +124,9 @@ func (r *Response) Alias(alias string) *DataItem {
 	data, t := utils.FindAliasDataInReply(r.Reply, alias)
 
 	return &DataItem{
-		Data: data,
-		Type: t,
+		Alias: alias,
+		Data:  data,
+		Type:  t,
 	}
 }
 

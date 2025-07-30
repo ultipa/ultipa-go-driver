@@ -334,7 +334,7 @@ func TestBatchInsert2(t *testing.T) {
 		}
 
 		requestConfig := &configuration.RequestConfig{
-			TimezoneOffset: 3600,
+			//TimezoneOffset: 3600,
 		}
 		insertRequestConfig.RequestConfig = requestConfig
 

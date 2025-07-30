@@ -190,11 +190,16 @@ func doConvertSdkNodeRowToUltipaNodeRow(schema *structs.Schema, row *structs.Nod
 		if prop.IsIDType() || prop.IsIgnore() {
 			continue
 		}
+
+		var bs []byte
+		var err error
 		if !row.Values.Contain(prop.Name) {
-			row.Values.Set(prop.Name, utils.GetNullBytes(prop.Type))
+			bs = utils.GetNullBytes(prop.Type)
 			//return nil, errors.New(fmt.Sprintf("node row [%d] error: values doesn't contain property [%s]", index, prop.Name))
+		} else {
+			bs, err = row.GetBytesSafe(prop.Name, prop.Type, prop.SubTypes, config)
 		}
-		bs, err := row.GetBytesSafe(prop.Name, prop.Type, prop.SubTypes, config)
+
 		if err != nil {
 			logger.PrintError("Get row bytes value failed  " + prop.Name + " " + err.Error())
 			err = errors.New(fmt.Sprintf("node row [%d] error: failed to serialize value of property %s,value=%v", index, prop.Name, row.Values.Get(prop.Name)))

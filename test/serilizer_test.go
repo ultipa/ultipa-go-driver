@@ -1,11 +1,25 @@
 package test
 
 import (
+	"fmt"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/utils/logger"
+	"google.golang.org/protobuf/proto"
 	"testing"
 
 	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
 	"github.com/ultipa/ultipa-go-driver/v5/sdk/utils"
 )
+
+func TestNull(t *testing.T) {
+	listData := &ultipa.SetData{
+		IsNull: true,
+	}
+	bs, err := proto.Marshal(listData)
+	if err != nil {
+		logger.PrintError(fmt.Sprintf("failed to get bytes of null list, %v", err))
+	}
+	t.Log(bs)
+}
 
 func TestStringAsInterface(t *testing.T) {
 	datetime, err := utils.StringAsInterface("1970-01-01", ultipa.PropertyType_DATETIME, nil)

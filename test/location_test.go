@@ -11,7 +11,7 @@ import (
 
 func TestLocation(t *testing.T) {
 	config1 := &configuration.RequestConfig{
-		TimezoneOffset: 3600,
+		//TimezoneOffset: 3600,
 	}
 	location1 := utils.GetLocationFromConfig(config1)
 	timestamp1, _ := utils.StringAsInterface("1970-01-01 00:00:00", ultipa.PropertyType_TIMESTAMP, location1)

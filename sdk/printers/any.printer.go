@@ -2,12 +2,10 @@ package printers
 
 import (
 	"fmt"
-	"github.com/ultipa/ultipa-go-driver/v5/sdk/utils/logger"
-	"log"
-	"strings"
-
 	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
 	"github.com/ultipa/ultipa-go-driver/v5/sdk/http"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/utils/logger"
+	"log"
 )
 
 func PrintAny(dataitem *http.DataItem) {
@@ -17,7 +15,6 @@ func PrintAny(dataitem *http.DataItem) {
 	}
 
 	if dataitem.Data == nil {
-
 		fmt.Println(dataitem.Type.String() + ": No Return Data")
 		return
 	}
@@ -25,16 +22,18 @@ func PrintAny(dataitem *http.DataItem) {
 	switch dataitem.Type {
 	case ultipa.ResultType_RESULT_TYPE_NODE:
 		nodes, schemas, _ := dataitem.AsNodes()
+		fmt.Println("Alias: ", dataitem.Alias)
 		PrintNodes(nodes, schemas)
 	case ultipa.ResultType_RESULT_TYPE_EDGE:
 		edges, schemas, _ := dataitem.AsEdges()
+		fmt.Println("Alias: ", dataitem.Alias)
 		PrintEdges(edges, schemas)
 	case ultipa.ResultType_RESULT_TYPE_TABLE:
 		//handle other table
 		res, err := dataitem.AsTable()
 
 		// handle schema table
-		if strings.Contains(res.Name, http.RESP_NODE_SCHEMA_KEY) || strings.Contains(res.Name, http.RESP_EDGE_SCHEMA_KEY) {
+		if res.Name == http.RESP_NODE_SCHEMA_KEY || res.Name == http.RESP_EDGE_SCHEMA_KEY {
 			schemas, err := dataitem.AsSchemas()
 
 			if err != nil {

@@ -165,10 +165,10 @@ func checkNodeProperties(schema *structs.Schema, row *structs.Node, index int) e
 	if row == nil {
 		return errors.New(fmt.Sprintf("node row [%d] error: node row is nil.", index))
 	}
-	err := CheckValuesAndProperties(schema.Properties, row.GetValues(), index)
-	if err != nil {
-		return err
-	}
+	//err := CheckValuesAndProperties(schema.Properties, row.GetValues(), index)
+	//if err != nil {
+	//	return err
+	//}
 	return nil
 }
 
@@ -191,7 +191,8 @@ func doConvertSdkNodeRowToUltipaNodeRow(schema *structs.Schema, row *structs.Nod
 			continue
 		}
 		if !row.Values.Contain(prop.Name) {
-			return nil, errors.New(fmt.Sprintf("node row [%d] error: values doesn't contain property [%s]", index, prop.Name))
+			row.Values.Set(prop.Name, utils.GetNullBytes(prop.Type))
+			//return nil, errors.New(fmt.Sprintf("node row [%d] error: values doesn't contain property [%s]", index, prop.Name))
 		}
 		bs, err := row.GetBytesSafe(prop.Name, prop.Type, prop.SubTypes, config)
 		if err != nil {

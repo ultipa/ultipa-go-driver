@@ -46,6 +46,7 @@ func init() {
 			0xff, 0xff, 0xff, 0xff,
 		},
 		ultipa.PropertyType_LIST: getListNullValue(),
+		ultipa.PropertyType_SET:  getSetNullValue(),
 		ultipa.PropertyType_MAP:  getMapNullValue(),
 		ultipa.PropertyType_BOOL: {0x2},
 
@@ -69,6 +70,17 @@ func GetNullValue(propertyType ultipa.PropertyType) []byte {
 
 func getListNullValue() []byte {
 	listData := &ultipa.ListData{
+		IsNull: true,
+	}
+	bs, err := proto.Marshal(listData)
+	if err != nil {
+		logger.PrintError(fmt.Sprintf("failed to get bytes of null list, %v", err))
+	}
+	return bs
+}
+
+func getSetNullValue() []byte {
+	listData := &ultipa.SetData{
 		IsNull: true,
 	}
 	bs, err := proto.Marshal(listData)

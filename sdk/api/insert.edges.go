@@ -167,12 +167,12 @@ func setPropertiesToEdgeRow(schema *structs.Schema, rows []*structs.Edge, config
 
 func checkEdgeProperties(schema *structs.Schema, row *structs.Edge, index int) error {
 	if row == nil {
-		return errors.New(fmt.Sprintf("node row [%d] error: node row is nil.", index))
+		return errors.New(fmt.Sprintf("edge row [%d] error: edge row is nil.", index))
 	}
-	err := CheckEdgeRows(row, schema.Properties, index)
-	if err != nil {
-		return err
-	}
+	//err := CheckEdgeRows(row, schema.Properties, index)
+	//if err != nil {
+	//	return err
+	//}
 	return nil
 }
 
@@ -200,7 +200,8 @@ func doConvertSdkEdgeRowToUltipaEdgeRow(schema *structs.Schema, row *structs.Edg
 		}
 
 		if !row.Values.Contain(prop.Name) {
-			return nil, errors.New(fmt.Sprintf("edge row [%d] error: values doesn't contain property [%s]", index, prop.Name))
+			row.Values.Set(prop.Name, utils.GetNullBytes(prop.Type))
+			//return nil, errors.New(fmt.Sprintf("edge row [%d] error: values doesn't contain property [%s]", index, prop.Name))
 		}
 
 		bs, err := row.GetBytesSafe(prop.Name, prop.Type, prop.SubTypes, config)

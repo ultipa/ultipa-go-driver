@@ -501,7 +501,14 @@ func decodeUtpDate(v []byte) (string, error) {
 	year := int((value>>9)&0x7FFF) - 16384
 	month := (value >> 5) & 0x0F
 	day := value & 0x1F
-	return fmt.Sprintf("%d-%02d-%02d", year, month, day), nil
+
+	var yearStr string
+	if year < 0 {
+		yearStr = fmt.Sprintf("-%.4d", -year) // 负数处理
+	} else {
+		yearStr = fmt.Sprintf("%04d", year)
+	}
+	return fmt.Sprintf("%s-%02d-%02d", yearStr, month, day), nil
 }
 
 func decodeUtpTime(v []byte, withTZ bool) (string, error) {

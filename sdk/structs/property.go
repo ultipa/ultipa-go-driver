@@ -237,9 +237,15 @@ func (p *Property) GetStringType() (string, error) {
 }
 
 func GetPropertyTypeByString(s string) ultipa.PropertyType {
-	return PropertyMap[s]
+	if t, ok := PropertyMap[s]; ok {
+		return t
+	}
+	return ultipa.PropertyType_UNSET
 }
 
 func GetStringByPropertyType(t ultipa.PropertyType) string {
-	return PropertyReverseMap[t]
+	if s, ok := PropertyReverseMap[t]; ok {
+		return s
+	}
+	return "unSupportedType"
 }

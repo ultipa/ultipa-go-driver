@@ -51,6 +51,7 @@ var InsertErrorCodeMsgMap = map[int]string{
 	10010: "TO_ID_EMPTY: toId cannot be empty",
 	10011: "DUPLICATE_ID: duplicated id",
 	10012: "KEY_CONSTRAINT_VIOLATED: violation of the EDGE KEY constraint",
+	10013: "INVALID_FORMAT: invalid format",
 	11001: "OK_BUT_ID_EXISTED: id already exists",
 	19999: "OTHERS: other error",
 }
@@ -68,6 +69,7 @@ var InsertErrorCodeMsgMap2 = map[int]string{
 	10010: "TO_ID_EMPTY",
 	10011: "DUPLICATE_ID",
 	10012: "KEY_CONSTRAINT_VIOLATED",
+	10013: "INVALID_FORMAT",
 	11001: "OK_BUT_ID_EXISTED",
 	19999: "OTHERS",
 }
@@ -85,6 +87,7 @@ var InsertErrorCodeMsgMap3 = map[string]int{
 	"TO_ID_EMPTY":              10010,
 	"DUPLICATE_ID":             10011,
 	"KEY_CONSTRAINT_VIOLATED":  10012,
+	"INVALID_FORMAT":           10013,
 	"OK_BUT_ID_EXISTED":        11001,
 	"OTHERS":                   19999,
 }

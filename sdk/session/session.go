@@ -1,7 +1,6 @@
 package session
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
@@ -74,192 +73,60 @@ func (s *Session) HasTransaction() bool {
 	return s.transactionID != 0
 }
 
-// StartTransaction begins a new transaction
-func (s *Session) StartTransaction(ctx context.Context) (*http.Response, error) {
+// StartTransaction begins a new transaction and returns a Transaction object
+// Only one transaction can be active per session at a time
+func (s *Session) StartTransaction(config *configuration.TransactionConfig) (*Transaction, error) {
 	if s.HasTransaction() {
 		return nil, fmt.Errorf("%w: transaction ID %d", ErrTransactionActive, s.transactionID)
 	}
 
-	config := s.buildRequestConfig()
+	reqConfig := s.buildRequestConfig()
 
-	// Check context cancellation
-	if ctx != nil {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
+	// Apply transaction config to the request
+	if config != nil {
+		reqConfig.TransactionConfig = config
 	}
 
-	resp, err := s.conn.Gql("START TRANSACTION", config)
+	resp, err := s.conn.Gql("START TRANSACTION", reqConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start transaction: %w", err)
 	}
 
-	if resp.IsSuccess() {
-		s.transactionID = resp.TransactionID
+	if !resp.IsSuccess() {
+		return nil, fmt.Errorf("start transaction failed: %s", resp.Status.Message)
 	}
 
-	return resp, nil
+	// Server returns transaction ID in response
+	if resp.TransactionID == 0 {
+		return nil, fmt.Errorf("server did not return transaction ID")
+	}
+
+	s.transactionID = resp.TransactionID
+
+	// Create and return Transaction object
+	return newTransaction(s, resp.TransactionID, config), nil
 }
 
-// Commit commits the current transaction
-func (s *Session) Commit(ctx context.Context) (*http.Response, error) {
-	if !s.HasTransaction() {
-		return nil, ErrNoTransaction
-	}
-
-	config := s.buildRequestConfig()
-
-	// Check context cancellation
-	if ctx != nil {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-	}
-
-	resp, err := s.conn.Gql("COMMIT", config)
-
-	if err == nil && resp.IsSuccess() {
-		s.transactionID = 0 // Clear transaction
-	}
-
-	return resp, err
-}
-
-// Rollback rolls back the current transaction
-func (s *Session) Rollback(ctx context.Context) (*http.Response, error) {
-	if !s.HasTransaction() {
-		return nil, ErrNoTransaction
-	}
-
-	config := s.buildRequestConfig()
-
-	// Check context cancellation
-	if ctx != nil {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-	}
-
-	resp, err := s.conn.Gql("ROLLBACK", config)
-
-	if err == nil && resp.IsSuccess() {
-		s.transactionID = 0 // Clear transaction
-	}
-
-	return resp, err
-}
-
-// UQL executes UQL within session context
-func (s *Session) UQL(uql string, config *configuration.RequestConfig) (*http.Response, error) {
-	mergedConfig := s.mergeConfig(config)
+// Uql executes UQL within session context
+func (s *Session) Uql(uql string, config *configuration.RequestConfig) (*http.Response, error) {
+	mergedConfig := configuration.MergeWithSessionDefaults(config, s.config, s.sessionID, s.transactionID)
 	return s.conn.Uql(uql, mergedConfig)
 }
 
-// GQL executes GQL within session context
-func (s *Session) GQL(gql string, config *configuration.RequestConfig) (*http.Response, error) {
-	mergedConfig := s.mergeConfig(config)
-	return s.conn.Gql(gql, mergedConfig)
-}
-
-// UQLWithContext executes UQL with context support
-func (s *Session) UQLWithContext(ctx context.Context, uql string, config *configuration.RequestConfig) (*http.Response, error) {
-	// Check context before execution
-	if ctx != nil {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-	}
-
-	mergedConfig := s.mergeConfig(config)
-	return s.conn.Uql(uql, mergedConfig)
-}
-
-// GQLWithContext executes GQL with context support
-func (s *Session) GQLWithContext(ctx context.Context, gql string, config *configuration.RequestConfig) (*http.Response, error) {
-	// Check context before execution
-	if ctx != nil {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-	}
-
-	mergedConfig := s.mergeConfig(config)
+// Gql executes GQL within session context
+func (s *Session) Gql(gql string, config *configuration.RequestConfig) (*http.Response, error) {
+	mergedConfig := configuration.MergeWithSessionDefaults(config, s.config, s.sessionID, s.transactionID)
 	return s.conn.Gql(gql, mergedConfig)
 }
 
 // buildRequestConfig creates config with session/transaction context
 func (s *Session) buildRequestConfig() *configuration.RequestConfig {
-	config := &configuration.RequestConfig{
-		SessionID:     s.sessionID,
-		TransactionID: s.transactionID,
-	}
-
-	if s.config != nil {
-		config.Graph = s.config.Graph
-		config.Timeout = s.config.Timeout
-		config.Timezone = s.config.Timezone
-		config.TimezoneOffset = s.config.TimezoneOffset
-		config.Thread = s.config.Thread
-	}
-
-	return config
+	return configuration.MergeWithSessionDefaults(nil, s.config, s.sessionID, s.transactionID)
 }
 
-// mergeConfig merges session config with provided config
-func (s *Session) mergeConfig(config *configuration.RequestConfig) *configuration.RequestConfig {
-	if config == nil {
-		return s.buildRequestConfig()
-	}
-
-	// Start with provided config
-	merged := &configuration.RequestConfig{
-		Graph:             config.Graph,
-		Timeout:           config.Timeout,
-		Host:              config.Host,
-		Timezone:          config.Timezone,
-		TimezoneOffset:    config.TimezoneOffset,
-		Thread:            config.Thread,
-		TransactionConfig: config.TransactionConfig,
-	}
-
-	// Override session/transaction from session context
-	merged.SessionID = s.sessionID
-	if s.HasTransaction() {
-		merged.TransactionID = s.transactionID
-	} else if config.TransactionID != 0 {
-		merged.TransactionID = config.TransactionID
-	}
-
-	// Apply session config defaults if not overridden
-	if s.config != nil {
-		if merged.Graph == "" {
-			merged.Graph = s.config.Graph
-		}
-		if merged.Timeout == 0 {
-			merged.Timeout = s.config.Timeout
-		}
-		if merged.Timezone == "" {
-			merged.Timezone = s.config.Timezone
-		}
-		if merged.TimezoneOffset == "" {
-			merged.TimezoneOffset = s.config.TimezoneOffset
-		}
-		if merged.Thread == 0 {
-			merged.Thread = s.config.Thread
-		}
-	}
-
-	return merged
+// clearTransaction clears the transaction ID (called by Transaction after commit/rollback)
+func (s *Session) clearTransaction() {
+	s.transactionID = 0
 }
 
 // generateSessionID creates a cryptographically random 64-bit session ID
@@ -272,15 +139,22 @@ func generateSessionID() (uint64, error) {
 	return binary.BigEndian.Uint64(b[:]), nil
 }
 
-// Close gracefully closes session
-// Automatically rolls back active transaction if any
-// Note: Session keeps alive until explicitly closed or user logs out
+// Close gracefully closes session by sending SESSION CLOSE command
+// If a transaction is active, it will be automatically rolled back by the server
 func (s *Session) Close() error {
-	if s.HasTransaction() {
-		_, err := s.Rollback(nil)
-		if err != nil {
-			return fmt.Errorf("failed to rollback transaction on close: %w", err)
-		}
+	config := s.buildRequestConfig()
+
+	resp, err := s.conn.Gql("SESSION CLOSE", config)
+	if err != nil {
+		return fmt.Errorf("failed to close session: %w", err)
 	}
+
+	if !resp.IsSuccess() {
+		return fmt.Errorf("session close failed: %s", resp.Status.Message)
+	}
+
+	// Clear session state
+	s.transactionID = 0
+
 	return nil
 }

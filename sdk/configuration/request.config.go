@@ -37,6 +37,54 @@ func (rc *RequestConfig) ValidateTransaction() error {
 	return nil
 }
 
+// MergeWithSessionDefaults merges a user-provided RequestConfig with session defaults
+// Priority (highest to lowest):
+// 1. User-provided config (override)
+// 2. Session defaults (sessionConfig)
+// 3. Zero values (empty/0)
+//
+// sessionID and transactionID are always set from the parameters
+// Note: sessionID=0 and transactionID=0 are valid (means no session/transaction)
+func MergeWithSessionDefaults(override *RequestConfig, sessionConfig *SessionConfig, sessionID, transactionID uint64) *RequestConfig {
+	// Start with session/transaction IDs
+	merged := &RequestConfig{
+		SessionID:     sessionID,
+		TransactionID: transactionID,
+	}
+
+	// If override is provided, copy its values
+	if override != nil {
+		merged.Graph = override.Graph
+		merged.Timeout = override.Timeout
+		merged.Host = override.Host
+		merged.Timezone = override.Timezone
+		merged.TimezoneOffset = override.TimezoneOffset
+		merged.Thread = override.Thread
+		merged.TransactionConfig = override.TransactionConfig
+	}
+
+	// Apply session config defaults for empty values
+	if sessionConfig != nil {
+		if merged.Graph == "" {
+			merged.Graph = sessionConfig.Graph
+		}
+		if merged.Timeout == 0 {
+			merged.Timeout = sessionConfig.Timeout
+		}
+		if merged.Timezone == "" {
+			merged.Timezone = sessionConfig.Timezone
+		}
+		if merged.TimezoneOffset == "" {
+			merged.TimezoneOffset = sessionConfig.TimezoneOffset
+		}
+		if merged.Thread == 0 {
+			merged.Thread = sessionConfig.Thread
+		}
+	}
+
+	return merged
+}
+
 type InsertRequestConfig struct {
 	*RequestConfig
 	InsertType ultipa.InsertType // used for insertBulkNodes/Edges

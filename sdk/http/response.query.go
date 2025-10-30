@@ -17,12 +17,13 @@ type Response struct {
 		DataItem *DataItem
 		Index    int
 	}
-	Reply       *ultipa.QueryReply
-	Status      *Status
-	Statistic   *Statistic
-	ExplainPlan *ExplainPlan
-	AliasList   []string
-	Resp        ultipa.UltipaRpcs_QueryClient
+	Reply         *ultipa.QueryReply
+	Status        *Status
+	Statistic     *Statistic
+	ExplainPlan   *ExplainPlan
+	AliasList     []string
+	Resp          ultipa.UltipaRpcs_QueryClient
+	TransactionID uint64 // Transaction ID returned from START TRANSACTION (0 = no transaction)
 }
 
 type ResponseWithExistCheck struct {
@@ -81,6 +82,11 @@ func NewUQLResponse(resp ultipa.UltipaRpcs_QueryClient) (response *Response, err
 			response.Status.Message = record.Status.Msg
 		}
 
+		// Extract transaction ID if present (s5.3 feature)
+		if record.TransactionId != 0 {
+			response.TransactionID = record.TransactionId
+		}
+
 		if response.Status.Code != ultipa.ErrorCode_SUCCESS {
 			return response, nil
 		}
@@ -137,4 +143,14 @@ func (r *Response) GetSingleTable() (*structs.Table, error) {
 		return t, err
 	}
 	return nil, nil
+}
+
+// GetTransactionID returns the transaction ID from the response
+func (r *Response) GetTransactionID() uint64 {
+	return r.TransactionID
+}
+
+// HasTransaction returns true if response contains a transaction ID
+func (r *Response) HasTransaction() bool {
+	return r.TransactionID != 0
 }

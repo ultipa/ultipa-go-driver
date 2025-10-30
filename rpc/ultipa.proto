@@ -39,11 +39,13 @@ service UltipaControls{
 
 message HelloUltipaRequest {
   string name = 1;
+  uint64 session_id = 2;
 }
 
 message HelloUltipaReply {
   Status status = 1;
   string message = 2;
+  bool exist_session_id = 3;
 }
 
 enum QueryType {
@@ -68,6 +70,12 @@ message QueryRequest {
   uint32 thread_num = 6;
   string tz = 7;
   string tz_offset = 8;
+  uint64 session_id = 9;
+  uint64 transaction_id = 10;
+  bool read_only = 11;
+  bool isolation_level = 12;
+  bool autocommit = 13;
+  uint32 transaction_timeout = 14;
 }
 
 enum ResultType {
@@ -100,6 +108,7 @@ message QueryReply {
   ExplainPlan explain_plan = 12;
 
   repeated GraphAlias graphs = 13;
+  uint64 transaction_id = 14;
 }
 message UuidPath {
   repeated uint64 uuids = 1 [jstype = JS_STRING];

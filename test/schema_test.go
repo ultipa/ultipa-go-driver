@@ -17,7 +17,7 @@ func TestShowSchemas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	log.Printf(utils.JSONString(res))
+	log.Printf("%s", utils.JSONString(res))
 }
 
 func TestListSchema(t *testing.T) {
@@ -26,7 +26,7 @@ func TestListSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	log.Printf(utils.JSONString(res))
+	log.Printf("%s", utils.JSONString(res))
 }
 
 func TestCompareSchema(t *testing.T) {

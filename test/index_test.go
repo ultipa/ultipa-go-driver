@@ -39,7 +39,7 @@ func TestCreateIndex(t *testing.T) {
 		t.Error(err)
 	}
 
-	log.Printf(utils.JSONString(resp))
+	log.Printf("%s", utils.JSONString(resp))
 }
 
 func TestCreateFullIndex(t *testing.T) {
@@ -60,7 +60,7 @@ func TestCreateFullIndex(t *testing.T) {
 		t.Error(err)
 	}
 
-	log.Printf(utils.JSONString(resp))
+	log.Printf("%s", utils.JSONString(resp))
 }
 
 func TestListIndex(t *testing.T) {
@@ -70,7 +70,7 @@ func TestListIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	log.Printf(utils.JSONString(indexes))
+	log.Printf("%s", utils.JSONString(indexes))
 }
 
 func TestListNodeIndex(t *testing.T) {
@@ -80,7 +80,7 @@ func TestListNodeIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	log.Printf(utils.JSONString(indexes))
+	log.Printf("%s", utils.JSONString(indexes))
 }
 
 func TestListEdgeIndex(t *testing.T) {
@@ -90,7 +90,7 @@ func TestListEdgeIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	log.Printf(utils.JSONString(indexes))
+	log.Printf("%s", utils.JSONString(indexes))
 }
 
 func TestListFullText(t *testing.T) {
@@ -100,7 +100,7 @@ func TestListFullText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	log.Printf(utils.JSONString(indexes))
+	log.Printf("%s", utils.JSONString(indexes))
 }
 
 func TestListNodeFullText(t *testing.T) {
@@ -110,7 +110,7 @@ func TestListNodeFullText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	log.Printf(utils.JSONString(indexes))
+	log.Printf("%s", utils.JSONString(indexes))
 }
 
 func TestListEdgeFullText(t *testing.T) {
@@ -120,7 +120,7 @@ func TestListEdgeFullText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	log.Printf(utils.JSONString(indexes))
+	log.Printf("%s", utils.JSONString(indexes))
 }
 
 func TestCreateFullText(t *testing.T) {
@@ -130,13 +130,13 @@ func TestCreateFullText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	log.Printf(jresp.Status.Code.String())
+	log.Printf("%s", jresp.Status.Code.String())
 
 	resp, err := client.DropFullText("full", ultipa.DBType_DBNODE, nil)
 	resp, err = client.DropFullText("full", ultipa.DBType_DBNODE, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	log.Printf(resp.Status.Code.String())
+	log.Printf("%s", resp.Status.Code.String())
 
 }

@@ -2,9 +2,10 @@ package test
 
 import (
 	"fmt"
-	"github.com/ultipa/ultipa-go-driver/v5/sdk/http"
 	"log"
 	"testing"
+
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/http"
 )
 
 func TestGql(t *testing.T) {
@@ -15,7 +16,7 @@ func TestGql(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Logf(response.Status.Code.String())
+	fmt.Println(response.Status.Code)
 }
 
 func TestGqlStream(t *testing.T) {

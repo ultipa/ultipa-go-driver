@@ -9,6 +9,7 @@ import (
 	"github.com/ultipa/ultipa-go-driver/v5/sdk/configuration"
 	"github.com/ultipa/ultipa-go-driver/v5/sdk/connection"
 	"github.com/ultipa/ultipa-go-driver/v5/sdk/http"
+	"github.com/ultipa/ultipa-go-driver/v5/sdk/session"
 )
 
 // Uql, Insert, Export, Download ... API methods
@@ -240,6 +241,19 @@ func (api *UltipaAPI) buildQueryRequest(query string, queryType ultipa.QueryType
 	} else if config.Timezone != "" {
 		uqlRequest.Tz = config.Timezone
 	}
+
+	// Add session/transaction fields (s5.3 feature)
+	uqlRequest.SessionId = config.SessionID
+	uqlRequest.TransactionId = config.TransactionID
+
+	// Add transaction config if present
+	if config.TransactionConfig != nil {
+		uqlRequest.ReadOnly = config.TransactionConfig.ReadOnly
+		uqlRequest.IsolationLevel = config.TransactionConfig.IsolationLevel
+		uqlRequest.Autocommit = config.TransactionConfig.Autocommit
+		uqlRequest.TransactionTimeout = config.TransactionConfig.TransactionTimeout
+	}
+
 	return uqlRequest
 }
 
@@ -308,4 +322,16 @@ func (api *UltipaAPI) SafelyClose() error {
 		return api.Pool.Close()
 	}
 	return nil
+}
+
+// Session creates a new database session with auto-generated ID
+// The session provides session-scoped UQL/GQL execution and transaction support
+func (api *UltipaAPI) Session(config *configuration.SessionConfig) (*session.Session, error) {
+	return session.NewSession(api, config)
+}
+
+// SessionWithID creates a session with a specified ID
+// Use this when you need to maintain a specific session ID across requests
+func (api *UltipaAPI) SessionWithID(sessionID uint64, config *configuration.SessionConfig) *session.Session {
+	return session.NewSessionWithID(api, sessionID, config)
 }

@@ -68,7 +68,12 @@ func ConvertBytesToInterface(bs []byte, t ultipa.PropertyType, subTypes []ultipa
 			return nil, err
 		}
 		return types.PointFromStr(str)
-		//TODO
+	case ultipa.PropertyType_POINT3D:
+		str, err := AsPoint3DString(bs)
+		if str == "" || err != nil {
+			return nil, err
+		}
+		return types.Point3DFromStr(str)
 	case ultipa.PropertyType_DECIMAL:
 		if len(bs) == 0 {
 			return nil, nil
@@ -186,6 +191,24 @@ func ConvertInterfaceToBytesSafe(value interface{}, t ultipa.PropertyType, subTy
 				return nil, err
 			}
 			return []byte(point.String()), nil
+		default:
+			return ConvertInterfaceToBytes(value)
+		}
+
+	case ultipa.PropertyType_POINT3D:
+		switch v := value.(type) {
+		case types.Point3D:
+			return []byte(v.String()), nil
+
+		case *types.Point3D:
+			return []byte(v.String()), nil
+
+		case string:
+			point3d, err := types.Point3DFromStr(v)
+			if err != nil {
+				return nil, err
+			}
+			return []byte(point3d.String()), nil
 		default:
 			return ConvertInterfaceToBytes(value)
 		}
@@ -475,6 +498,23 @@ func AsPointString(value []byte) (string, error) {
 	}
 	//POINT(48.500000 22.200000)
 	return fmt.Sprintf("POINT(%f %f)", latitude, longitude), nil
+}
+
+func AsPoint3DString(value []byte) (string, error) {
+	if len(value) != 24 {
+		return "", errors.New("deserialize point3d type error: length != 24")
+	}
+	xBytes := value[:8]
+	x := AsFloat64(xBytes)
+	yBytes := value[8:16]
+	y := AsFloat64(yBytes)
+	zBytes := value[16:]
+	z := AsFloat64(zBytes)
+	if math.IsNaN(x) || math.IsNaN(y) || math.IsNaN(z) {
+		return "", nil
+	}
+	//POINT3D(1.000000 2.000000 3.000000)
+	return fmt.Sprintf("POINT3D(%f %f %f)", x, y, z), nil
 }
 
 func AsBool(value []byte) bool {

@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package ultipa;
-option go_package = ".;ultipa";
+
 
 // The ultipa service definition.
 service UltipaRpcs {
@@ -70,6 +70,7 @@ message QueryRequest {
   uint32 thread_num = 6;
   string tz = 7;
   string tz_offset = 8;
+
   uint64 session_id = 9;
   uint64 transaction_id = 10;
   bool read_only = 11;
@@ -108,6 +109,7 @@ message QueryReply {
   ExplainPlan explain_plan = 12;
 
   repeated GraphAlias graphs = 13;
+
   uint64 transaction_id = 14;
 }
 message UuidPath {
@@ -236,6 +238,8 @@ message InsertNodesRequest {
   bool internal = 5;  //for internal usage
   repeated string projections = 6; //for internal usage
   repeated uint32 indexes = 7; //for internal usage
+  string tz = 8;
+  int32 tz_offset = 9;
 }
 
 
@@ -259,6 +263,8 @@ message InsertEdgesRequest {
   InsertType insert_type = 5;
   repeated string projections = 6; //for internal usage
   repeated uint32 indexes = 7; //for internal usage
+  string tz = 8;
+  int32 tz_offset = 9;
 }
 
 message InsertEdgesReply {
@@ -330,7 +336,8 @@ enum PropertyType {
   LOCAL_TIME = 23;
   YEAR_TO_MONTH = 24;
   DAY_TO_SECOND = 25;
-  JSON = 26;
+  RECORD = 26;
+  POINT3D = 27;
 }
 
 enum ErrorCode {

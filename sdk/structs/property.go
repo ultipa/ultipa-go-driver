@@ -56,6 +56,7 @@ var PropertyMap = map[string]ultipa.PropertyType{
 	"text":       ultipa.PropertyType_TEXT,
 	"blob":       ultipa.PropertyType_BLOB,
 	"point":      ultipa.PropertyType_POINT,
+	"point3d":    ultipa.PropertyType_POINT3D,
 	"decimal":    ultipa.PropertyType_DECIMAL,
 	"NULL_":      ultipa.PropertyType_NULL_,
 	"bool":       ultipa.PropertyType_BOOL,
@@ -67,7 +68,7 @@ var PropertyMap = map[string]ultipa.PropertyType{
 	"local time":              ultipa.PropertyType_LOCAL_TIME,
 	"duration(year to month)": ultipa.PropertyType_YEAR_TO_MONTH,
 	"duration(day to second)": ultipa.PropertyType_DAY_TO_SECOND,
-	"json":                    ultipa.PropertyType_JSON,
+	// "json":                    ultipa.PropertyType_JSON, // JSON type not yet defined in proto
 }
 
 var PropertyReverseMap = map[ultipa.PropertyType]string{
@@ -90,6 +91,7 @@ var PropertyReverseMap = map[ultipa.PropertyType]string{
 	ultipa.PropertyType_TEXT:      "text",
 	ultipa.PropertyType_BLOB:      "blob",
 	ultipa.PropertyType_POINT:     "point",
+	ultipa.PropertyType_POINT3D:   "point3d",
 	ultipa.PropertyType_DECIMAL:   "decimal",
 	ultipa.PropertyType_NULL_:     "NULL_",
 	ultipa.PropertyType_BOOL:      "bool",
@@ -101,7 +103,7 @@ var PropertyReverseMap = map[ultipa.PropertyType]string{
 	ultipa.PropertyType_LOCAL_TIME:     "local time",
 	ultipa.PropertyType_YEAR_TO_MONTH:  "duration(year to month)",
 	ultipa.PropertyType_DAY_TO_SECOND:  "duration(day to second)",
-	ultipa.PropertyType_JSON:           "json",
+	// ultipa.PropertyType_JSON:           "json", // JSON type not yet defined in proto
 }
 
 type DecimalExtra struct {

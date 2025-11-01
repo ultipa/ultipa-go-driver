@@ -79,6 +79,12 @@ func ConvertBytesToInterface(bs []byte, t ultipa.PropertyType, subTypes []ultipa
 			return nil, nil
 		}
 		return AsString(bs), nil
+	case ultipa.PropertyType_RECORD:
+		if len(bs) == 0 {
+			return nil, nil
+		}
+		jsonStr := AsString(bs)
+		return types.RecordFromJSON(jsonStr)
 	case ultipa.PropertyType_LIST:
 		return deserializeList(bs, subTypes)
 	//	//TODO
@@ -215,6 +221,37 @@ func ConvertInterfaceToBytesSafe(value interface{}, t ultipa.PropertyType, subTy
 
 	case ultipa.PropertyType_DECIMAL:
 		return serializeDecimal(value)
+	case ultipa.PropertyType_RECORD:
+		switch v := value.(type) {
+		case types.Record:
+			jsonStr, err := v.ToJSONString()
+			if err != nil {
+				return nil, err
+			}
+			return []byte(jsonStr), nil
+		case *types.Record:
+			jsonStr, err := v.ToJSONString()
+			if err != nil {
+				return nil, err
+			}
+			return []byte(jsonStr), nil
+		case map[string]interface{}:
+			record := types.NewRecord(v)
+			jsonStr, err := record.ToJSONString()
+			if err != nil {
+				return nil, err
+			}
+			return []byte(jsonStr), nil
+		case string:
+			// Validate it's valid JSON
+			_, err := types.RecordFromJSON(v)
+			if err != nil {
+				return nil, err
+			}
+			return []byte(v), nil
+		default:
+			return ConvertInterfaceToBytes(value)
+		}
 	case ultipa.PropertyType_SET:
 		return SerializeSetData(value, subTypes, req)
 	case ultipa.PropertyType_MAP:

@@ -68,6 +68,7 @@ var PropertyMap = map[string]ultipa.PropertyType{
 	"local time":              ultipa.PropertyType_LOCAL_TIME,
 	"duration(year to month)": ultipa.PropertyType_YEAR_TO_MONTH,
 	"duration(day to second)": ultipa.PropertyType_DAY_TO_SECOND,
+	"record":                  ultipa.PropertyType_RECORD,
 	// "json":                    ultipa.PropertyType_JSON, // JSON type not yet defined in proto
 }
 
@@ -103,6 +104,7 @@ var PropertyReverseMap = map[ultipa.PropertyType]string{
 	ultipa.PropertyType_LOCAL_TIME:     "local time",
 	ultipa.PropertyType_YEAR_TO_MONTH:  "duration(year to month)",
 	ultipa.PropertyType_DAY_TO_SECOND:  "duration(day to second)",
+	ultipa.PropertyType_RECORD:         "record",
 	// ultipa.PropertyType_JSON:           "json", // JSON type not yet defined in proto
 }
 

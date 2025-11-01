@@ -1,5 +1,29 @@
 # CHANGE LOGS
 
+### 5.3.0
+
+- Support Session and Transaction
+  - Added `Session` struct for managing database sessions with unique session IDs
+  - Added `Transaction` struct for transaction management within sessions
+  - Session supports both UQL and GQL execution
+  - Transaction supports GQL execution with commit and rollback operations
+  - Configurable session timeout and graph settings
+  - NOT thread-safe - caller must synchronize if used across goroutines
+  - Comprehensive test coverage with examples
+
+- Support POINT3D data type
+  - Added `types.Point3D` struct with X, Y, Z coordinates
+  - String-based serialization following POINT pattern
+  - Comprehensive test coverage for insert and retrieval operations
+
+- Support RECORD data type
+  - Added `types.Record` struct for storing arbitrary JSON data
+  - Handles JSON objects, arrays, and nested structures
+  - Automatic array wrapping for root-level JSON arrays (workaround for database behavior)
+  - Provides convenient methods: `Get()`, `Set()`, `Has()`, `Keys()`, `ToMap()`, `ToJSONString()`
+  - Full serialization/deserialization support
+  - Comprehensive test coverage with GQL queries
+
 ### 4.4.0
 
 - Add Graph result type, Change original DateItem.asGraphs() method to DateItem.asGraphInfos() and return

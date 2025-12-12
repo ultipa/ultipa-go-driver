@@ -93,3 +93,52 @@ func TestRollbackHDCAlgo(t *testing.T) {
 		t.Fatalf("RollbackHDCAlgo error, %v", err)
 	}
 }
+
+// TestInstallHDCAlgoOnlySo tests installing algo with only .so file (no yml)
+func TestInstallHDCAlgoOnlySo(t *testing.T) {
+	// Test: Install with only .so file should succeed
+	_, err := client.InstallHDCAlgo([]string{"./test_algo_lib/libplugin_lpa.so"}, hdcName, nil)
+	if err != nil {
+		t.Errorf("InstallHDCAlgo with only .so file should succeed, but got error: %v", err)
+	}
+
+	// Cleanup: uninstall the algo
+	_, _ = client.UninstallHDCAlgo(algoName, hdcName, nil)
+}
+
+// TestInstallHDCAlgoMultipleSo tests installing algo with multiple .so files
+func TestInstallHDCAlgoMultipleSo(t *testing.T) {
+	// Test: Install with multiple .so files should succeed
+	_, err := client.InstallHDCAlgo([]string{
+		"./test_algo_lib/libplugin_lpa.so",
+		"./test_algo_lib/libplugin_k_core.so",
+	}, hdcName, nil)
+	if err != nil {
+		t.Errorf("InstallHDCAlgo with multiple .so files should succeed, but got error: %v", err)
+	}
+
+	// Cleanup: uninstall the algos
+	_, _ = client.UninstallHDCAlgo(algoName, hdcName, nil)
+	_, _ = client.UninstallHDCAlgo("k_core", hdcName, nil)
+}
+
+// TestInstallHDCAlgoValidation tests parameter validation
+func TestInstallHDCAlgoValidation(t *testing.T) {
+	// Test: Empty files should return error
+	_, err := client.InstallHDCAlgo([]string{}, hdcName, nil)
+	if err == nil || err.Error() != "empty files" {
+		t.Errorf("InstallHDCAlgo with empty files should return 'empty files' error, got: %v", err)
+	}
+
+	// Test: Nil files should return error
+	_, err = client.InstallHDCAlgo(nil, hdcName, nil)
+	if err == nil || err.Error() != "empty files" {
+		t.Errorf("InstallHDCAlgo with nil files should return 'empty files' error, got: %v", err)
+	}
+
+	// Test: Only yml file (no .so) should return error
+	_, err = client.InstallHDCAlgo([]string{"./test_algo_lib/lpa.yml"}, hdcName, nil)
+	if err == nil || err.Error() != "at least one .so file is required" {
+		t.Errorf("InstallHDCAlgo with only yml file should return 'at least one .so file is required' error, got: %v", err)
+	}
+}

@@ -171,47 +171,81 @@ func (api *UltipaAPI) UqlStream(uql string, cb func(*http.Response) error, confi
 }
 
 func (api *UltipaAPI) doExecuteQuery(query string, queryType ultipa.QueryType, config *configuration.RequestConfig) (ultipa.UltipaRpcs_QueryClient, *configuration.UltipaConfig, error) {
-	var err error
-
 	if config == nil {
 		config = &configuration.RequestConfig{}
 	}
 
-	//config.Uql = query
-	//uqlItem := utils.NewUql(query)
-	//isExtra := uqlItem.IsExtra()
+	// If user specified a specific host, don't do failover
+	if config.Host != "" {
+		return api.doExecuteQueryOnce(query, queryType, config)
+	}
+
+	// Try with failover to other hosts
+	maxRetries := len(api.Pool.Actives)
+	if maxRetries < 1 {
+		maxRetries = 1
+	}
+
+	var lastErr error
+	var conf *configuration.UltipaConfig
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		conn, c, err := api.GetConn(config)
+		conf = c
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		client := conn.GetClient()
+		ctx, cancel, err := api.Pool.NewContext(config)
+		if err != nil {
+			cancel()
+			lastErr = err
+			continue
+		}
+
+		uqlRequest := api.buildQueryRequest(query, queryType, config, conf)
+		resp, err := client.Query(ctx, uqlRequest)
+
+		if err != nil {
+			cancel()
+			// Mark current host as unavailable and try next
+			api.Pool.MarkHostUnavailable(conn.Host)
+			lastErr = err
+			continue
+		}
+
+		// Success - don't cancel context here as caller needs to use resp
+		return resp, conf, nil
+	}
+
+	return nil, conf, fmt.Errorf("all hosts failed, last error: %v", lastErr)
+}
+
+// doExecuteQueryOnce executes query on a specific host without failover
+func (api *UltipaAPI) doExecuteQueryOnce(query string, queryType ultipa.QueryType, config *configuration.RequestConfig) (ultipa.UltipaRpcs_QueryClient, *configuration.UltipaConfig, error) {
+	var err error
 	var client ultipa.UltipaRpcsClient
 	var conf *configuration.UltipaConfig
 
 	client, conf, err = api.GetClient(config)
-
 	if err != nil {
 		return nil, conf, err
 	}
-	//CurrentGraph of conf may be changed by query
-	//config.Graph = conf.CurrentGraph
+
 	ctx, cancel, err := api.Pool.NewContext(config)
 	if err != nil {
 		defer cancel()
 		return nil, conf, err
 	}
+
 	uqlRequest := api.buildQueryRequest(query, queryType, config, conf)
-	var resp ultipa.UltipaRpcs_QueryClient
-	resp, err = client.Query(ctx, uqlRequest)
-
+	resp, err := client.Query(ctx, uqlRequest)
 	if err != nil {
-		// if get error, ex: unavailable
-		//err = api.Pool.RefreshClusterInfo(conf.CurrentGraph)
-
-		//if err != nil {
-		//    return nil, conf, err
-		//}
-		resp, err = client.Query(ctx, uqlRequest)
-
-		if err != nil {
-			return nil, conf, err
-		}
+		return nil, conf, err
 	}
+
 	return resp, conf, nil
 }
 

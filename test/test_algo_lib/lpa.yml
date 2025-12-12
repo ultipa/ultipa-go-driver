@@ -1,30 +1,150 @@
 base:
-  name_cn: 标签传播2
-  name_en: LPA
-  category: community
-  labels: label, propergation, community, new
-  desc_cn: Louvain算法是基于模块度的社区识别算法，通过相邻点的连通关系和权重值进行聚类，以最大化模块度为目标进行迭代计算。模块度越高，说   明社区划分越明显; 模块越多，说明社区越多。
-  desc_en: The Louvain method for community detection is a method to extract communities from large networks
+  category: Community Detection & Classification
+  cn:
+    name: 标签传播
+    desc: 标签传播（Label Propagation） 是一种基于标签传播的社区识别算法。每个节点初始化标签后，在每次迭代中，每个节点都会将其标签更新为在其邻居中最普遍的标签。这个迭代过程会使连接密集的节点拥有同一标签，有相同标签的节点继而形成一个社区。
+    link:
+      - {
+          title: 阅读文档,
+          address: https://www.ultipa.cn/document/ultipa-graph-analytics-algorithms/lpa,
+        }
+  en:
+    name: Label Propagation
+    desc: The Label Propagation algorithm (LPA) is a community detection algorithm using label propagation. Each node is initialized with a label and at every iteration of the algorithm, each node updates its label to the one that is most prevalent among its neighbors. This iterative process allows densely connected groups of nodes to converge on a consensus labels, nodes sharing the same label then forming a community.
+    link:
+      - {
+          title: Read More,
+          address: https://www.ultipa.com/document/ultipa-graph-analytics-algorithms/lpa,
+        }
 
 param_form:
-  loop1_num: Int
-  min_modularity_increase: Float
-  edge_property_name: Property # @schema.propertu or property
+  node_label_property:
+    feat:
+      - "'<@schema.?><property>'"
+      - "optional"
+    desc_cn: 用于初始化节点标签的数值或字符串类点属性，无该属性的点不参与标签传播；不设置时由系统生成标签。
+    desc_en: Numeric or string node property to initialize node labels, nodes without the property are not involved in label propagation; system will generate the labels if unset.
+  node_weight_property:
+    feat:
+      - "'<@schema.?><property>'"
+      - "optional"
+    desc_cn: 节点权重所在的数值类属性。
+    desc_en: Numeric node property used as node weights.
+  edge_weight_property:
+    feat:
+      - "'<@schema.?><property>'"
+      - "optional"
+    desc_cn: 边权重所在的数值类属性。
+    desc_en: Numeric edge property to be used as edge weights.
+  loop_num:
+    feat:
+      - "integer"
+      - "optional"
+    desc_cn: 传播的迭代次数；迭代完所有轮数后，算法结束。
+    desc_en: Number of propagation iterations; the algorithm ends after running for all rounds.
+    list:
+      - {
+          value: ≥1,
+          desc_en: "Set the number of iterations, default is 5",
+          desc_cn: "设置迭代次数，默认5"
+        }
+  k:
+    feat:
+      - "integer"
+      - "optional"
+    desc_cn: 最多为每个节点保留的标签数量（按照标签概率从大到小排序）。
+    desc_en: Maximum number of labels each node keeps in the end (all labels are ordered by their probability from high to low).
+    list:
+      - {
+          value: ≥1,
+          desc_en: "Set the number of labels, default is 1",
+          desc_cn: "设置标签数量，默认1"
+        }
+  return_id_uuid:
+    feat:
+      - "string"
+      - "optional"
+    desc_en: Includes <span style='color:#E7623D;'>_uuid</span>, <span style='color:#E7623D;'>_id</span>, or both to represent nodes in the results.
+    desc_cn: 在结果里包含<span style='color:#E7623D;'>_uuid</span>和/或<span style='color:#E7623D;'>_id</span>来代表点。
+    list:
+      - {
+          value: uuid,
+          desc_en: "Use <span style='color:#E7623D;'>_uuid</span> to represent nodes (default)",
+          desc_cn: "用<span style='color:#E7623D;'>_uuid</span>代表点（默认）"
+        }
+      - {
+          value: id,
+          desc_en: "Use <span style='color:#E7623D;'>_id</span> to represent nodes",
+          desc_cn: "用<span style='color:#E7623D;'>_id</span>代表点"
+        }
+      - {
+          value: both,
+          desc_en: "Use <span style='color:#E7623D;'>_uuid</span> and <span style='color:#E7623D;'>_id</span> to represent nodes",
+          desc_cn: "用<span style='color:#E7623D;'>_uuid</span>和<span style='color:#E7623D;'>_id</span>代表点"
+        }
 
-file_write_form:
-# Field 类型：Node, File, Bool, String, Int, Float, Property, Schema
-# <> : 代表多个 或 数组
-  community_file: File
-  community_stats_file: File
+write:
+  file:
+    feat:
+      - "object"
+    desc_en: Write the results back to file.
+    desc_cn: 将结果回写至文件。
+    list:
+      - {
+          value: filename,
+          desc_en: "Each row contains the <span style='color:#E7623D;'>_uuid</span>/<span style='color:#E7623D;'>_id</span>, <span style='color:#E7623D;'>label_N</span> and the corresponding <span style='color:#E7623D;'>probability_N</span> of a node",
+          desc_cn: "每行包括节点的<span style='color:#E7623D;'>_uuid</span>/<span style='color:#E7623D;'>_id</span>、<span style='color:#E7623D;'>label_N</span>以及对应的<span style='color:#E7623D;'>probability_N</span>"
+        }
+  db:
+    feat:
+      - "object"
+    desc_en: Write the results back to database.
+    desc_cn: 将结果回写至数据库。
+    list:
+      - {
+          value: property,
+          desc_en: "Write the <span style='color:#E7623D;'>label_N</span> and the corresponding <span style='color:#E7623D;'>probability_N</span> to the specified node properties. E.g., if sets <span style='color:#E7623D;'>property</span> as \"lab\" and keeps two labels for each node, the results will be written to properties <span style='color:#E7623D;'>lab_1</span>, <span style='color:#E7623D;'>probability_1</span>, <span style='color:#E7623D;'>lab_2</span>, and <span style='color:#E7623D;'>probability_2</span>",
+          desc_cn: "将节点的<span style='color:#E7623D;'>label_N</span>以及相应的<span style='color:#E7623D;'>probability_N</span>回写至指定点属性。例如，设置<span style='color:#E7623D;'>property</span>为“lab”并为每个节点保留两个标签，那么结果将回写至<span style='color:#E7623D;'>lab_1</span>、<span style='color:#E7623D;'>probability_1</span>、<span style='color:#E7623D;'>lab_2</span>和<span style='color:#E7623D;'>probability_2</span>这四个属性"
+        }
 
-db_write_form:
-  property: property<> # ex: @user.community / community / @user.community, @company.community
+media:
+  img: algorithm_lpa.png
+  thumb: null
 
-stats_write_form:
-# 如果存在表示支持，不一定需要参数
-
-stats_form:
-# 如果存在表示支持，不一定需要参数
-
-# media:
-# thumb: aHR0cDovLzIxMC4xMy4zMi4xNDY6MzAzMi9pbWcvYWxnb3MvYWxnb3JpdGhtX2xvdXZhaW4ucG5n
+example:
+  - {
+      label_en: "File Writeback",
+      label_cn: "文件回写",
+      gql: "CALL algo.lpa.write(\"<hdcGraphName>\", {\n  return_id_uuid: \"id\",\n  k: 2,\n  loop_num: 5\n}, {\n  file: {\r\n    filename: \"lpa\"\n  }\n})",
+      uql: "algo(lpa).params({\n  projection: \"<hdcGraphName>\",\n  return_id_uuid: \"id\",\n  k: 2,\n  loop_num: 5\n}).write({\n  file: {\n    filename: \"lpa\"\n  }\n})"
+    }
+  - {
+      label_en: "DB Writeback",
+      label_cn: "数据库回写",
+      gql: "CALL algo.lpa.write(\"<hdcGraphName>\", {\n  k: 2,\n  loop_num: 10\n}, {\n  db: {\n    property: \"lab\"\n  }\n})",
+      uql: "algo(lpa).params({\n  projection: \"<hdcGraphName>\",\n  k: 2,\n  loop_num: 10\n}).write({\n  db: {\n    property: \"lab\"\n  }\n})"
+    }
+  - {
+      label_en: "Stats Writeback",
+      label_cn: "统计回写",
+      gql: "CALL algo.lpa.write(\"<hdcGraphName>\", {\n  k: 2,\n  loop_num: 10\n}, {\n  stats: {}\n})",
+      uql: "algo(lpa).params({\n  projection: \"<hdcGraphName>\",\n  k: 2,\n  loop_num: 10\n}).write({\n  stats:{}\n})"
+    }
+  - {
+      label_en: "Full Return",
+      label_cn: "完整返回",
+      gql: "CALL algo.lpa.run(\"<hdcGraphName>\", {\n  return_id_uuid: \"id\",\n  k: 1\n}) YIELD r\r\nRETURN r",
+      uql: "exec{\n  algo(lpa).params({\n    return_id_uuid: \"id\",\n    k: 1\n  }) as r\n  return r\n} on <hdcGraphName>"
+    }
+  - {
+      label_en: "Stream Return",
+      label_cn: "流式返回",
+      gql: "CALL algo.lpa.stream(\"<hdcGraphName>\", {\n  return_id_uuid: \"id\",\n  loop_num: 10\n}) YIELD r\nRETURN r",
+      uql: "exec{\n  algo(lpa).params({\n    return_id_uuid: \"id\",\n    loop_num: 10\n  }).stream() as r\n  return r\n} on <hdcGraphName>"
+  }
+  - {
+      label_en: "Stats Return",
+      label_cn: "统计返回",
+      gql: "CALL algo.lpa.stats(\"<hdcGraphName>\", {\n  k: 1,\n  loop_num: 5\n}) YIELD s\nRETURN s",
+      uql: "exec{\n  algo(lpa).params({\n    k: 1,\n    loop_num: 5\n  }).stats() as s\n  return s\n} on <hdcGraphName>"
+  }

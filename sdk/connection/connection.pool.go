@@ -31,6 +31,11 @@ type ConnectionPool struct {
 	Actives         []*Connection
 	LastActivesTime time.Time
 	muActiveSafely  sync.Mutex
+
+	// UnavailableHosts records hosts that are temporarily unavailable and their cooldown end time
+	UnavailableHosts map[string]time.Time
+	// CooldownDuration is the duration a host stays unavailable after failure (default 30 minutes)
+	CooldownDuration time.Duration
 }
 
 func NewConnectionPool(config *configuration.UltipaConfig) (*ConnectionPool, error) {
@@ -40,8 +45,10 @@ func NewConnectionPool(config *configuration.UltipaConfig) (*ConnectionPool, err
 	}
 
 	pool := &ConnectionPool{
-		Config:      config,
-		Connections: map[string]*Connection{},
+		Config:           config,
+		Connections:      map[string]*Connection{},
+		UnavailableHosts: map[string]time.Time{},
+		CooldownDuration: 30 * time.Minute,
 	}
 
 	// Init Cluster Manager
@@ -83,7 +90,17 @@ func (pool *ConnectionPool) CreateConnections() error {
 func (pool *ConnectionPool) RefreshActivesWithSeconds(seconds int32) error {
 	pool.muActiveSafely.Lock()
 	defer pool.muActiveSafely.Unlock()
-	if time.Now().Sub(pool.LastActivesTime) <= 5*time.Second && len(pool.Connections) == len(pool.Actives) {
+
+	// Check and restore hosts whose cooldown has expired
+	now := time.Now()
+	for host, cooldownEnd := range pool.UnavailableHosts {
+		if now.After(cooldownEnd) {
+			delete(pool.UnavailableHosts, host)
+			logger.PrintInfo(fmt.Sprintf("Host %s cooldown expired, restoring to available pool", host))
+		}
+	}
+
+	if now.Sub(pool.LastActivesTime) <= 5*time.Second && len(pool.Connections) == len(pool.Actives)+len(pool.UnavailableHosts) {
 		// Avoid frequent refreshing
 		return nil
 	}
@@ -98,6 +115,12 @@ func (pool *ConnectionPool) RefreshActivesWithSeconds(seconds int32) error {
 	connErrors := make([]error, len(pool.Connections))
 	var connections []*Connection
 	for host, connection := range pool.Connections {
+		// Skip hosts that are still in cooldown period
+		if cooldownEnd, exists := pool.UnavailableHosts[host]; exists {
+			if time.Now().Before(cooldownEnd) {
+				continue
+			}
+		}
 		hosts = append(hosts, host)
 		connections = append(connections, connection)
 	}
@@ -116,6 +139,8 @@ func (pool *ConnectionPool) RefreshActivesWithSeconds(seconds int32) error {
 				logger.PrintWarn(localConn.Host + " failed - " + err.Error())
 				localConn.Active = ultipa.ServerStatus_DEAD
 				connErrors[idx] = err
+				// Mark host as unavailable with cooldown
+				pool.UnavailableHosts[localConn.Host] = time.Now().Add(pool.CooldownDuration)
 				return nil
 			}
 			defer cancel()
@@ -128,6 +153,8 @@ func (pool *ConnectionPool) RefreshActivesWithSeconds(seconds int32) error {
 				logger.PrintWarn(localConn.Host + " failed - " + err.Error())
 				localConn.Active = ultipa.ServerStatus_DEAD
 				connErrors[idx] = err
+				// Mark host as unavailable with cooldown
+				pool.UnavailableHosts[localConn.Host] = time.Now().Add(pool.CooldownDuration)
 				// this connection failed, try next, so return nil here to bypass errgroup.
 				return nil
 			}
@@ -147,6 +174,8 @@ func (pool *ConnectionPool) RefreshActivesWithSeconds(seconds int32) error {
 				logger.PrintWarn(conn.Host + " failed - " + resp.Status.Msg)
 				localConn.Active = ultipa.ServerStatus_DEAD
 				connErrors[idx] = errors.New(resp.Status.Msg)
+				// Mark host as unavailable with cooldown
+				pool.UnavailableHosts[localConn.Host] = time.Now().Add(pool.CooldownDuration)
 			}
 			return nil
 		})
@@ -400,6 +429,31 @@ func (pool *ConnectionPool) Close() error {
 		}
 	}
 	return nil
+}
+
+// MarkHostUnavailable marks a host as unavailable and removes it from the active pool.
+// The host will enter a cooldown period and won't be used until the cooldown expires.
+func (pool *ConnectionPool) MarkHostUnavailable(host string) {
+	pool.muActiveSafely.Lock()
+	defer pool.muActiveSafely.Unlock()
+
+	// Record cooldown end time
+	pool.UnavailableHosts[host] = time.Now().Add(pool.CooldownDuration)
+	logger.PrintWarn(fmt.Sprintf("Host %s marked as unavailable, cooldown until %v", host, pool.UnavailableHosts[host]))
+
+	// Remove from Actives
+	newActives := make([]*Connection, 0, len(pool.Actives))
+	for _, conn := range pool.Actives {
+		if conn.Host != host {
+			newActives = append(newActives, conn)
+		}
+	}
+	pool.Actives = newActives
+
+	// Mark connection as DEAD
+	if conn, exists := pool.Connections[host]; exists {
+		conn.Active = ultipa.ServerStatus_DEAD
+	}
 }
 
 // // set context with timeout and auth info

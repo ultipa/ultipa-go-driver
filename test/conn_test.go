@@ -174,3 +174,52 @@ func TestConnectionSSL(t *testing.T) {
 	uql, err := client.Uql("show().schema()", nil)
 	log.Println(uql)
 }
+
+// TestClusterFailover tests failover when one host in the cluster goes down.
+// During the test, manually stop one of the hosts to verify:
+// 1. Requests automatically fail over to other available hosts
+// 2. The failed host enters a 30-minute cooldown period
+// 3. The failed host is removed from the active pool
+func TestClusterFailover(t *testing.T) {
+	config := &configuration.UltipaConfig{
+		Hosts: []string{
+			"192.168.1.42:61299",
+			"192.168.1.42:61399",
+			"192.168.1.42:61499",
+		},
+		Username:     username,
+		Password:     password,
+		DefaultGraph: "miniCircle",
+	}
+
+	testClient, err := sdk.NewUltipaDriver(config)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+	defer testClient.Close()
+
+	t.Logf("Initial active hosts: %d", len(testClient.Pool.Actives))
+	for _, conn := range testClient.Pool.Actives {
+		t.Logf("  - %s", conn.Host)
+	}
+
+	// Execute queries in a loop, manually stop one host during the test
+	for i := 0; i < 100; i++ {
+		resp, err := testClient.Uql("show().graph()", nil)
+		if err != nil {
+			t.Logf("Query %d failed: %v", i, err)
+		} else {
+			t.Logf("Query %d success, status: %v", i, resp.Status.Code)
+		}
+
+		// Print current active hosts and unavailable hosts
+		t.Logf("  Active hosts: %d, Unavailable hosts: %d",
+			len(testClient.Pool.Actives), len(testClient.Pool.UnavailableHosts))
+
+		for host, cooldownEnd := range testClient.Pool.UnavailableHosts {
+			t.Logf("  Unavailable: %s (cooldown until: %v)", host, cooldownEnd)
+		}
+
+		time.Sleep(1 * time.Second)
+	}
+}

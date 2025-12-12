@@ -3,13 +3,15 @@ package api
 import (
 	"bufio"
 	"errors"
+	"io"
+	"os"
+	"path"
+	"strings"
+
 	"github.com/codingsince1985/checksum"
 	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
 	"github.com/ultipa/ultipa-go-driver/v5/sdk/configuration"
 	"github.com/ultipa/ultipa-go-driver/v5/sdk/http"
-	"io"
-	"os"
-	"path"
 )
 
 // UninstallHDCAlgo uninstall algo
@@ -78,13 +80,21 @@ func (api *UltipaAPI) RollbackHDCAlgo(algoName, hdcServerName string, config *co
 	}}, nil
 }
 
-// InstallHDCAlgo  install algos, files : [...so, yml]
+// InstallHDCAlgo  install algos, files : [...so, yml(optional)]
 func (api *UltipaAPI) InstallHDCAlgo(files []string, hdcServerName string, config *configuration.RequestConfig) (*http.Response, error) {
 	if files == nil || len(files) == 0 {
 		return nil, errors.New("empty files")
 	}
-	if len(files) < 2 {
-		return nil, errors.New("lack files, At least two files are required: so + yml")
+	// Validate at least one .so file exists
+	hasSoFile := false
+	for _, file := range files {
+		if strings.HasSuffix(strings.ToLower(file), ".so") {
+			hasSoFile = true
+			break
+		}
+	}
+	if !hasSoFile {
+		return nil, errors.New("at least one .so file is required")
 	}
 
 	client, err := api.GetControlClient(config)
@@ -104,7 +114,7 @@ func (api *UltipaAPI) InstallHDCAlgo(files []string, hdcServerName string, confi
 	}
 
 	// Send each so/yml file
-	for i, file := range files {
+	for _, file := range files {
 		algoFile, err := os.Open(file)
 		if err != nil {
 			return nil, err
@@ -114,7 +124,9 @@ func (api *UltipaAPI) InstallHDCAlgo(files []string, hdcServerName string, confi
 		algoFileReader := bufio.NewReader(algoFile)
 		algoFileMD5, _ := checksum.MD5sum(file)
 
-		isYml := i == len(files)-1
+		// Determine if file is yml by extension instead of position
+		lowerFile := strings.ToLower(file)
+		isYml := strings.HasSuffix(lowerFile, ".yml") || strings.HasSuffix(lowerFile, ".yaml")
 
 		// Send  file in chunks
 		if err := sendFileChunks(algoFileReader, streamClient, path.Base(algoFile.Name()), algoFileMD5, hdcServerName, isYml); err != nil {

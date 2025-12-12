@@ -6,25 +6,12 @@ import (
 	"io"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	ultipa "github.com/ultipa/ultipa-go-driver/v5/rpc"
 	"github.com/ultipa/ultipa-go-driver/v5/sdk/configuration"
 )
 
-func (api *UltipaAPI) DownloadAlgoResultFile(fileName string, jobId string, config *configuration.RequestConfig, receive func(data []byte) error) error {
-	var err error
-
-	err, files := api.getFilesByJobId(jobId, config)
-	if err != nil {
-		return err
-	}
-	for _, file := range files {
-		if strings.HasSuffix(file, fileName) {
-			fileName = file
-		}
-	}
-
+func (api *UltipaAPI) DownloadAlgoResultFile(fileName string, config *configuration.RequestConfig, receive func(data []byte) error) error {
 	client, err := api.GetControlClient(config)
 	if err != nil {
 		return err

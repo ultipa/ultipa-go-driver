@@ -199,6 +199,18 @@ func edgeToString(edge *Edge) string {
 			// to prevent double escaping
 			if str, ok := v.(string); ok && isValidJSONForEdge(str) {
 				dataMap[k] = json.RawMessage(str)
+			} else if p3d, ok := v.(*types.Point3D); ok && p3d != nil {
+				// Handle Point3D pointer - convert to string format for UQL
+				dataMap[k] = p3d.String()
+			} else if p3d, ok := v.(types.Point3D); ok {
+				// Handle Point3D value - convert to string format for UQL
+				dataMap[k] = p3d.String()
+			} else if pt, ok := v.(*types.Point); ok && pt != nil {
+				// Handle Point pointer - convert to string format for UQL
+				dataMap[k] = pt.String()
+			} else if pt, ok := v.(types.Point); ok {
+				// Handle Point value - convert to string format for UQL
+				dataMap[k] = pt.String()
 			} else {
 				dataMap[k] = v
 			}

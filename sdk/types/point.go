@@ -51,3 +51,12 @@ func PointFromStr(pointStr string) (*Point, error) {
 func (p *Point) String() string {
 	return fmt.Sprintf(`POINT(%f %f)`, p.Latitude, p.Longitude)
 }
+
+// MarshalJSON implements json.Marshaler interface
+// Returns the Point in UQL format: "POINT(lat lon)"
+func (p *Point) MarshalJSON() ([]byte, error) {
+	if p == nil {
+		return []byte("null"), nil
+	}
+	return []byte(fmt.Sprintf(`"%s"`, p.String())), nil
+}

@@ -67,3 +67,12 @@ func Point3DFromStr(point3DStr string) (*Point3D, error) {
 func (p *Point3D) String() string {
 	return fmt.Sprintf(`POINT3D(%f %f %f)`, p.X, p.Y, p.Z)
 }
+
+// MarshalJSON implements json.Marshaler interface
+// Returns the Point3D in UQL format: "POINT3D(x y z)"
+func (p *Point3D) MarshalJSON() ([]byte, error) {
+	if p == nil {
+		return []byte("null"), nil
+	}
+	return []byte(fmt.Sprintf(`"%s"`, p.String())), nil
+}

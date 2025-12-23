@@ -84,6 +84,15 @@ func ConvertBytesToInterface(bs []byte, t ultipa.PropertyType, subTypes []ultipa
 			return nil, nil
 		}
 		jsonStr := AsString(bs)
+		// Handle null byte (single \x00) as null
+		if len(bs) == 1 && bs[0] == 0 {
+			return nil, nil
+		}
+		// Handle empty or whitespace-only strings as empty record
+		trimmed := strings.TrimSpace(jsonStr)
+		if trimmed == "" {
+			return types.NewRecord(nil), nil
+		}
 		return types.RecordFromJSON(jsonStr)
 	case ultipa.PropertyType_LIST:
 		return deserializeList(bs, subTypes)

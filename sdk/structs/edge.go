@@ -160,6 +160,20 @@ func GetSchemasOfEdgeList(edges []*Edge) map[string]*Schema {
 	return schemaMap
 }
 
+// isValidJSONForEdge checks if a string is valid JSON object or array
+func isValidJSONForEdge(s string) bool {
+	s = strings.TrimSpace(s)
+	if len(s) < 2 {
+		return false
+	}
+	// Check if it starts with { or [ (JSON object or array)
+	if (s[0] == '{' && s[len(s)-1] == '}') || (s[0] == '[' && s[len(s)-1] == ']') {
+		var js interface{}
+		return json.Unmarshal([]byte(s), &js) == nil
+	}
+	return false
+}
+
 func edgeToString(edge *Edge) string {
 	dataMap := make(map[string]interface{}, 10)
 
@@ -181,7 +195,13 @@ func edgeToString(edge *Edge) string {
 
 	if edge.Values != nil && edge.Values.Data != nil {
 		for k, v := range edge.Values.Data {
-			dataMap[k] = v
+			// Handle JSON string values (for RECORD type)
+			// to prevent double escaping
+			if str, ok := v.(string); ok && isValidJSONForEdge(str) {
+				dataMap[k] = json.RawMessage(str)
+			} else {
+				dataMap[k] = v
+			}
 		}
 	}
 

@@ -48,7 +48,8 @@ func init() {
 		ultipa.PropertyType_LIST: getListNullValue(),
 		ultipa.PropertyType_SET:  getSetNullValue(),
 		ultipa.PropertyType_MAP:  getMapNullValue(),
-		ultipa.PropertyType_BOOL: {0x2},
+		ultipa.PropertyType_BOOL:   {0x2},
+		ultipa.PropertyType_RECORD: {0}, // null RECORD is represented as null byte, similar to STRING
 
 		ultipa.PropertyType_DATE:           {0xff, 0xff, 0xff, 0xff},
 		ultipa.PropertyType_LOCAL_TIME:     {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff},

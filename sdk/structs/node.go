@@ -150,20 +150,38 @@ func GetSchemasOfNodeList(nodes []*Node) map[string]*Schema {
 	return schemaMap
 }
 
+// isValidJSON checks if a string is valid JSON object or array
+func isValidJSON(s string) bool {
+	s = strings.TrimSpace(s)
+	if len(s) < 2 {
+		return false
+	}
+	// Check if it starts with { or [ (JSON object or array)
+	if (s[0] == '{' && s[len(s)-1] == '}') || (s[0] == '[' && s[len(s)-1] == ']') {
+		var js interface{}
+		return json.Unmarshal([]byte(s), &js) == nil
+	}
+	return false
+}
+
 func nodeToString(node *Node) string {
 	dataMap := make(map[string]interface{}, 10)
 	if node.ID != "" {
-		//_ = node.Set("_id", node.ID)
 		dataMap["_id"] = node.ID
 	}
 	if node.UUID != 0 {
-		//_ = node.Set("_uuid", node.UUID)
 		dataMap["_uuid"] = node.UUID
 	}
 
 	if node.Values != nil && node.Values.Data != nil {
 		for k, v := range node.Values.Data {
-			dataMap[k] = v
+			// Handle JSON string values (for RECORD type)
+			// to prevent double escaping
+			if str, ok := v.(string); ok && isValidJSON(str) {
+				dataMap[k] = json.RawMessage(str)
+			} else {
+				dataMap[k] = v
+			}
 		}
 	}
 

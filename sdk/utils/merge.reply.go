@@ -46,6 +46,47 @@ func FindAliasDataInReply(reply *ultipa.QueryReply, alias string) (data interfac
 			//	data = Find(reply.Graphs, func(index int) bool { return reply.Graphs[index].Alias == alias })
 			t = Alias.ResultType
 		case ultipa.ResultType_RESULT_TYPE_UNSET:
+			// When ResultType is UNSET, try to find data in different collections
+			// Try Attrs first (common for property queries like n.record)
+			if reply.Attrs != nil {
+				data = Find(reply.Attrs, func(index int) bool { return reply.Attrs[index].Alias == alias })
+				if data != nil {
+					t = ultipa.ResultType_RESULT_TYPE_ATTR
+					break
+				}
+			}
+			// Try Nodes (for node queries like RETURN n)
+			if reply.Nodes != nil {
+				data = Find(reply.Nodes, func(index int) bool { return reply.Nodes[index].Alias == alias })
+				if data != nil {
+					t = ultipa.ResultType_RESULT_TYPE_NODE
+					break
+				}
+			}
+			// Try Edges
+			if reply.Edges != nil {
+				data = Find(reply.Edges, func(index int) bool { return reply.Edges[index].Alias == alias })
+				if data != nil {
+					t = ultipa.ResultType_RESULT_TYPE_EDGE
+					break
+				}
+			}
+			// Try Tables
+			if reply.Tables != nil {
+				data = Find(reply.Tables, func(index int) bool { return reply.Tables[index].TableName == alias })
+				if data != nil {
+					t = ultipa.ResultType_RESULT_TYPE_TABLE
+					break
+				}
+			}
+			// Try Paths
+			if reply.Paths != nil {
+				data = Find(reply.Paths, func(index int) bool { return reply.Paths[index].Alias == alias })
+				if data != nil {
+					t = ultipa.ResultType_RESULT_TYPE_PATH
+					break
+				}
+			}
 			t = Alias.ResultType
 		default:
 			errMsg := fmt.Sprintf("FindAliasDataInReply Not Supported DBType %v, it usually caused by unsupported server version.", Alias.ResultType)

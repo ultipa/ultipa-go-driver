@@ -126,9 +126,7 @@ func (r *Response) Get(index int) (di *DataItem) {
 }
 
 func (r *Response) Alias(alias string) *DataItem {
-
 	data, t := utils.FindAliasDataInReply(r.Reply, alias)
-
 	return &DataItem{
 		Alias: alias,
 		Data:  data,

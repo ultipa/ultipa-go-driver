@@ -58,6 +58,15 @@ func (r *Record) String() string {
 	return jsonStr
 }
 
+// MarshalJSON implements json.Marshaler interface
+// This ensures Record is properly serialized when used with json.Marshal()
+func (r *Record) MarshalJSON() ([]byte, error) {
+	if r == nil || r.data == nil {
+		return []byte("{}"), nil
+	}
+	return json.Marshal(r.data)
+}
+
 // ToMap returns the internal map data
 func (r *Record) ToMap() map[string]interface{} {
 	if r == nil || r.data == nil {

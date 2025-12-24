@@ -3,9 +3,8 @@ package configuration
 // SessionConfig defines session-level configuration
 // Provides defaults for session scope, can be overridden per request
 type SessionConfig struct {
-	// Connection settings
-	Hosts []string // Override default hosts for this session
-	Graph string   // Override default graph for this session
+	// Graph settings
+	Graph string // Override default graph for this session
 
 	// Timeout settings
 	Timeout int32 // Request timeout in seconds

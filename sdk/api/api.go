@@ -114,7 +114,7 @@ func (api *UltipaAPI) Uql(uql string, config *configuration.RequestConfig) (*htt
 
 func (api *UltipaAPI) query(query string, queryType ultipa.QueryType, config *configuration.RequestConfig) (*http.Response, error) {
 
-	resp, _, err := api.doExecuteQuery(query, queryType, config)
+	resp, _, hostName, err := api.doExecuteQuery(query, queryType, config)
 	//log.Println(query)
 	if err != nil {
 		return nil, err
@@ -125,6 +125,9 @@ func (api *UltipaAPI) query(query string, queryType ultipa.QueryType, config *co
 	if err != nil {
 		return nil, err
 	}
+
+	// Set the host that processed this request (for transaction affinity)
+	uqlResp.HostName = hostName
 
 	//if uqlResp.Status.Code != ultipa.ErrorCode_SUCCESS {
 	//	return nil, errors.New(uqlResp.Status.Message)
@@ -145,7 +148,7 @@ func (api *UltipaAPI) query(query string, queryType ultipa.QueryType, config *co
 }
 
 func (api *UltipaAPI) queryStream(query string, queryType ultipa.QueryType, cb func(*http.Response) error, config *configuration.RequestConfig) error {
-	resp, _, err := api.doExecuteQuery(query, queryType, config)
+	resp, _, hostName, err := api.doExecuteQuery(query, queryType, config)
 	if err != nil {
 		return err
 	}
@@ -154,6 +157,9 @@ func (api *UltipaAPI) queryStream(query string, queryType ultipa.QueryType, cb f
 	if err != nil {
 		return err
 	}
+
+	// Set the host that processed this request (for transaction affinity)
+	uqlResp.HostName = hostName
 
 	//if uqlResp.Status.Code != ultipa.ErrorCode_SUCCESS {
 	//	return nil, errors.New(uqlResp.Status.Message)
@@ -170,7 +176,7 @@ func (api *UltipaAPI) UqlStream(uql string, cb func(*http.Response) error, confi
 	return api.queryStream(uql, ultipa.QueryType_UQL, cb, config)
 }
 
-func (api *UltipaAPI) doExecuteQuery(query string, queryType ultipa.QueryType, config *configuration.RequestConfig) (ultipa.UltipaRpcs_QueryClient, *configuration.UltipaConfig, error) {
+func (api *UltipaAPI) doExecuteQuery(query string, queryType ultipa.QueryType, config *configuration.RequestConfig) (ultipa.UltipaRpcs_QueryClient, *configuration.UltipaConfig, string, error) {
 	if config == nil {
 		config = &configuration.RequestConfig{}
 	}
@@ -217,36 +223,36 @@ func (api *UltipaAPI) doExecuteQuery(query string, queryType ultipa.QueryType, c
 		}
 
 		// Success - don't cancel context here as caller needs to use resp
-		return resp, conf, nil
+		return resp, conf, conn.Host, nil
 	}
 
-	return nil, conf, fmt.Errorf("all hosts failed, last error: %v", lastErr)
+	return nil, conf, "", fmt.Errorf("all hosts failed, last error: %v", lastErr)
 }
 
 // doExecuteQueryOnce executes query on a specific host without failover
-func (api *UltipaAPI) doExecuteQueryOnce(query string, queryType ultipa.QueryType, config *configuration.RequestConfig) (ultipa.UltipaRpcs_QueryClient, *configuration.UltipaConfig, error) {
+func (api *UltipaAPI) doExecuteQueryOnce(query string, queryType ultipa.QueryType, config *configuration.RequestConfig) (ultipa.UltipaRpcs_QueryClient, *configuration.UltipaConfig, string, error) {
 	var err error
 	var client ultipa.UltipaRpcsClient
 	var conf *configuration.UltipaConfig
 
 	client, conf, err = api.GetClient(config)
 	if err != nil {
-		return nil, conf, err
+		return nil, conf, "", err
 	}
 
 	ctx, cancel, err := api.Pool.NewContext(config)
 	if err != nil {
 		defer cancel()
-		return nil, conf, err
+		return nil, conf, "", err
 	}
 
 	uqlRequest := api.buildQueryRequest(query, queryType, config, conf)
 	resp, err := client.Query(ctx, uqlRequest)
 	if err != nil {
-		return nil, conf, err
+		return nil, conf, "", err
 	}
 
-	return resp, conf, nil
+	return resp, conf, config.Host, nil
 }
 
 // buildQueryRequest build uqlRequest according to requestConfig and configuration

@@ -24,6 +24,7 @@ type Response struct {
 	AliasList     []string
 	Resp          ultipa.UltipaRpcs_QueryClient
 	TransactionID uint64 // Transaction ID returned from START TRANSACTION (0 = no transaction)
+	HostName      string // Host that processed this request (for transaction affinity)
 }
 
 type ResponseWithExistCheck struct {

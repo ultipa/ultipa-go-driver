@@ -146,6 +146,11 @@ func (t *Transaction) Close() error {
 func (t *Transaction) buildRequestConfig() *configuration.RequestConfig {
 	config := configuration.MergeWithSessionDefaults(nil, t.session.config, t.session.sessionID, t.transactionID)
 
+	// Force to same host as START TRANSACTION (host affinity)
+	if t.session.hostName != "" {
+		config.Host = t.session.hostName
+	}
+
 	// Apply transaction config if provided
 	if t.config != nil {
 		config.TransactionConfig = t.config
@@ -158,6 +163,11 @@ func (t *Transaction) buildRequestConfig() *configuration.RequestConfig {
 // Similar to Session but always includes transaction ID
 func (t *Transaction) mergeConfig(config *configuration.RequestConfig) *configuration.RequestConfig {
 	merged := configuration.MergeWithSessionDefaults(config, t.session.config, t.session.sessionID, t.transactionID)
+
+	// Force to same host as START TRANSACTION (host affinity)
+	if t.session.hostName != "" && merged.Host == "" {
+		merged.Host = t.session.hostName
+	}
 
 	// Override with transaction's config if provided
 	if t.config != nil {

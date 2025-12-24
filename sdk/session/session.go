@@ -31,6 +31,7 @@ type Session struct {
 	sessionID     uint64
 	transactionID uint64
 	config        *configuration.SessionConfig
+	hostName      string // Host affinity for transaction (ensures all transaction requests go to same host)
 }
 
 // NewSession creates a new session with auto-generated ID
@@ -102,6 +103,8 @@ func (s *Session) StartTransaction(config *configuration.TransactionConfig) (*Tr
 	}
 
 	s.transactionID = resp.TransactionID
+	// Store the host that processed START TRANSACTION for affinity
+	s.hostName = resp.HostName
 
 	// Create and return Transaction object
 	return newTransaction(s, resp.TransactionID, config), nil
@@ -110,12 +113,20 @@ func (s *Session) StartTransaction(config *configuration.TransactionConfig) (*Tr
 // Uql executes UQL within session context
 func (s *Session) Uql(uql string, config *configuration.RequestConfig) (*http.Response, error) {
 	mergedConfig := configuration.MergeWithSessionDefaults(config, s.config, s.sessionID, s.transactionID)
+	// Force to same host if in transaction (host affinity)
+	if s.hostName != "" && mergedConfig.Host == "" {
+		mergedConfig.Host = s.hostName
+	}
 	return s.conn.Uql(uql, mergedConfig)
 }
 
 // Gql executes GQL within session context
 func (s *Session) Gql(gql string, config *configuration.RequestConfig) (*http.Response, error) {
 	mergedConfig := configuration.MergeWithSessionDefaults(config, s.config, s.sessionID, s.transactionID)
+	// Force to same host if in transaction (host affinity)
+	if s.hostName != "" && mergedConfig.Host == "" {
+		mergedConfig.Host = s.hostName
+	}
 	return s.conn.Gql(gql, mergedConfig)
 }
 
@@ -124,9 +135,10 @@ func (s *Session) buildRequestConfig() *configuration.RequestConfig {
 	return configuration.MergeWithSessionDefaults(nil, s.config, s.sessionID, s.transactionID)
 }
 
-// clearTransaction clears the transaction ID (called by Transaction after commit/rollback)
+// clearTransaction clears the transaction ID and host affinity (called by Transaction after commit/rollback)
 func (s *Session) clearTransaction() {
 	s.transactionID = 0
+	s.hostName = "" // Clear host affinity when transaction ends
 }
 
 // generateSessionID creates a cryptographically random 64-bit session ID
@@ -143,6 +155,10 @@ func generateSessionID() (uint64, error) {
 // If a transaction is active, it will be automatically rolled back by the server
 func (s *Session) Close() error {
 	config := s.buildRequestConfig()
+	// Force to same host if in transaction (host affinity)
+	if s.hostName != "" && config.Host == "" {
+		config.Host = s.hostName
+	}
 
 	resp, err := s.conn.Gql("SESSION CLOSE", config)
 	if err != nil {
@@ -155,6 +171,7 @@ func (s *Session) Close() error {
 
 	// Clear session state
 	s.transactionID = 0
+	s.hostName = ""
 
 	return nil
 }

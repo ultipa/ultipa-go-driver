@@ -367,11 +367,25 @@ func (api *UltipaAPI) SafelyClose() error {
 // Session creates a new database session with auto-generated ID
 // The session provides session-scoped UQL/GQL execution and transaction support
 func (api *UltipaAPI) Session(config *configuration.SessionConfig) (*session.Session, error) {
+	// Auto-populate graph from DefaultGraph if not set
+	if config == nil {
+		config = &configuration.SessionConfig{}
+	}
+	if config.Graph == "" && api.Pool.Config.DefaultGraph != "" {
+		config.Graph = api.Pool.Config.DefaultGraph
+	}
 	return session.NewSession(api, config)
 }
 
 // SessionWithID creates a session with a specified ID
 // Use this when you need to maintain a specific session ID across requests
 func (api *UltipaAPI) SessionWithID(sessionID uint64, config *configuration.SessionConfig) *session.Session {
+	// Auto-populate graph from DefaultGraph if not set
+	if config == nil {
+		config = &configuration.SessionConfig{}
+	}
+	if config.Graph == "" && api.Pool.Config.DefaultGraph != "" {
+		config.Graph = api.Pool.Config.DefaultGraph
+	}
 	return session.NewSessionWithID(api, sessionID, config)
 }

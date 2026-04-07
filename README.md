@@ -1,6 +1,10 @@
-# GQLDB Go Driver
+# Ultipa Go Driver
 
-Official Go driver for GQLDB graph database.
+Official Go driver for Ultipa Graph Database.
+
+> **Note:** This is the v6.x driver for Ultipa Graph Database.
+> - For Ultipa v5.x, use `go get github.com/ultipa/ultipa-go-driver@v5.3.0`
+> - For Ultipa v4.x, use `go get github.com/ultipa/ultipa-go-sdk@v1.4.5`
 
 ## Requirements
 
@@ -9,7 +13,7 @@ Official Go driver for GQLDB graph database.
 ## Installation
 
 ```bash
-go get github.com/gqldb/gqldb-go
+go get github.com/ultipa/ultipa-go-driver/v6
 ```
 
 ## Quick Start

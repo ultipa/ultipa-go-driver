@@ -26,7 +26,7 @@ import (
     "fmt"
     "time"
 
-    gqldb "github.com/gqldb/gqldb-go"
+    gqldb "github.com/ultipa/ultipa-go-driver/v6"
 )
 
 func main() {
@@ -66,8 +66,8 @@ func main() {
 
 ## Documentation
 
-See [GUIDE.md](GUIDE.md) for detailed usage.
+See [GUIDE.md](https://github.com/ultipa/ultipa-go-driver/blob/v6/GUIDE.md) for detailed usage.
 
 ## License
 
-[MIT License](LICENSE)
+[MIT License](https://github.com/ultipa/ultipa-go-driver/blob/v6/LICENSE)

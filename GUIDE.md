@@ -1,22 +1,22 @@
-# GQLDB Go Driver Guide
+# Ultipa Go Driver Guide
 
 ## Installation
 
 ```bash
-go get github.com/gqldb/gqldb-go
+go get github.com/ultipa/ultipa-go-driver/v6
 ```
 
 ## Configuration
 
 ```go
-import gqldb "github.com/gqldb/gqldb-go"
+import gqldb "github.com/ultipa/ultipa-go-driver/v6"
 
 // Default config
 config := gqldb.DefaultConfig()
 
 // Custom config with builder
 config := gqldb.NewConfigBuilder().
-    Hosts("host1:9000", "host2:9000").
+    Hosts("host1:60061", "host2:60061").
     Username("admin").
     Password("password").
     DefaultGraph("myGraph").
@@ -34,7 +34,7 @@ client, err := gqldb.NewClient(config)
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| Hosts | Server addresses | localhost:9000 |
+| Hosts | Server addresses | localhost:60061 |
 | Timeout | Query timeout | 30s |
 | MaxRecvSize | Max message size | 64MB |
 | PoolSize | Connection pool size | 10 |

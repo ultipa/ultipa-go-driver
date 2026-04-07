@@ -1,17 +1,19 @@
-module github.com/ultipa/ultipa-go-driver/v5
+module github.com/ultipa/ultipa-go-driver/v6
 
-go 1.13
+go 1.24.0
 
 require (
 	github.com/alexeyco/simpletable v1.0.0
-	github.com/codingsince1985/checksum v1.3.0
-	github.com/fatih/color v1.15.0
-	github.com/jinzhu/copier v0.3.5
-	github.com/joho/godotenv v1.5.1
-	github.com/pieterclaerhout/go-waitgroup v1.0.7
-	github.com/pterm/pterm v0.12.65
-	golang.org/x/sync v0.3.0
-	google.golang.org/grpc v1.57.0
-	google.golang.org/protobuf v1.31.0
-	gopkg.in/yaml.v3 v3.0.1
+	google.golang.org/grpc v1.77.0
+	google.golang.org/protobuf v1.36.10
 )
+
+require (
+	github.com/mattn/go-runewidth v0.0.12 // indirect
+	github.com/rivo/uniseg v0.1.0 // indirect
+	golang.org/x/net v0.46.1-0.20251013234738-63d1a5100f82 // indirect
+	golang.org/x/sys v0.37.0 // indirect
+	golang.org/x/text v0.30.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20251022142026-3a174f9686a8 // indirect
+)
+

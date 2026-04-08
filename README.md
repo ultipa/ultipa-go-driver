@@ -66,8 +66,8 @@ func main() {
 
 ## Documentation
 
-See [GUIDE.md](https://github.com/ultipa/ultipa-go-driver/blob/v6/GUIDE.md) for detailed usage.
+See [Quick Start](https://www.ultipa.com/docs/drivers/go-quick-start) for detailed usage.
 
 ## License
 
-[MIT License](https://github.com/ultipa/ultipa-go-driver/blob/v6/LICENSE)
+MIT License

@@ -69,7 +69,7 @@ func setupClosenessGraph(t *testing.T, ctx context.Context) (string, []string, f
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "E"}},      // 5
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "F"}},      // 6
 	}
-	nr, _ := noAuthClient.InsertNodes(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
+	nr, _ := noAuthClient.InsertNodesBatchAuto(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
 	ids := nr.NodeIDs
 
 	biEdge := func(from, to string) []*gqldb.EdgeData {
@@ -86,7 +86,7 @@ func setupClosenessGraph(t *testing.T, ctx context.Context) (string, []string, f
 	edges = append(edges, biEdge(ids[4], ids[5])...) // D-E
 	edges = append(edges, biEdge(ids[5], ids[6])...) // E-F
 
-	noAuthClient.InsertEdges(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
+	noAuthClient.InsertEdgesBatchAuto(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
 	noAuthClient.EndBulkImport(ctx, session.SessionID)
 	time.Sleep(1 * time.Second)
 

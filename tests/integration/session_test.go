@@ -71,7 +71,82 @@ func TestLogout(t *testing.T) {
 }
 
 // =============================================================================
-// Tests for server without authentication (192.168.1.101:60062)
+// Tests for server without authentication (192.168.1.100:60062)
+// =============================================================================
+
+func TestLoginWrongPassword(t *testing.T) {
+	if testClient == nil {
+		t.Skip("Auth client not available")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := testClient.Login(ctx, "admin", "wrong_password_xyz")
+	if err == nil {
+		t.Fatal("expected error when logging in with wrong password")
+	}
+
+	t.Logf("Got expected error for wrong password: %v", err)
+}
+
+func TestLoginEmptyUsername(t *testing.T) {
+	if testClient == nil {
+		t.Skip("Auth client not available")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := testClient.Login(ctx, "", "root11")
+	if err == nil {
+		t.Fatal("expected error when logging in with empty username")
+	}
+
+	t.Logf("Got expected error for empty username: %v", err)
+}
+
+func TestLogoutTwice(t *testing.T) {
+	if testClient == nil {
+		t.Skip("Auth client not available")
+	}
+
+	username := os.Getenv("GQLDB_USERNAME")
+	if username == "" {
+		username = "admin"
+	}
+	password := os.Getenv("GQLDB_PASSWORD")
+	if password == "" {
+		password = "root11"
+	}
+
+	// Ensure logged in first
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := testClient.Login(ctx, username, password)
+	if err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	// First logout should succeed
+	err = testClient.Logout(ctx)
+	if err != nil {
+		t.Fatalf("First logout failed: %v", err)
+	}
+
+	// Second logout should be handled gracefully (no panic)
+	err = testClient.Logout(ctx)
+	// Whether it returns an error or nil, it should not panic
+	t.Logf("Second logout result: err=%v", err)
+
+	// Re-login for subsequent tests
+	_, err = testClient.Login(ctx, username, password)
+	if err != nil {
+		t.Fatalf("Re-login after double logout failed: %v", err)
+	}
+}
+
+// =============================================================================
+// Tests for server without authentication (192.168.1.100:60062)
 // =============================================================================
 
 func TestNoAuth_Ping(t *testing.T) {

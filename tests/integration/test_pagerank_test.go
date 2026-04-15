@@ -59,7 +59,7 @@ func setupPRGraph(t *testing.T, ctx context.Context) (string, []string, func()) 
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "E"}},
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "F"}}, // isolated
 	}
-	nr, _ := noAuthClient.InsertNodes(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
+	nr, _ := noAuthClient.InsertNodesBatchAuto(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
 	ids := nr.NodeIDs
 
 	edges := []*gqldb.EdgeData{
@@ -70,7 +70,7 @@ func setupPRGraph(t *testing.T, ctx context.Context) (string, []string, func()) 
 		{Label: "CITES", FromNodeID: ids[2], ToNodeID: ids[3]}, // C→D
 		{Label: "CITES", FromNodeID: ids[3], ToNodeID: ids[4]}, // D→E
 	}
-	noAuthClient.InsertEdges(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
+	noAuthClient.InsertEdgesBatchAuto(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
 	noAuthClient.EndBulkImport(ctx, session.SessionID)
 	time.Sleep(1 * time.Second)
 

@@ -79,7 +79,7 @@ func setupAPGraph(t *testing.T, ctx context.Context) (string, []string, func()) 
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "D"}},
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "E"}},
 	}
-	nr, err := noAuthClient.InsertNodes(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
+	nr, err := noAuthClient.InsertNodesBatchAuto(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
 	if err != nil {
 		t.Fatalf("InsertNodes failed: %v", err)
 	}
@@ -96,7 +96,7 @@ func setupAPGraph(t *testing.T, ctx context.Context) (string, []string, func()) 
 		{Label: "LINK", FromNodeID: ids[3], ToNodeID: ids[4]},
 		{Label: "LINK", FromNodeID: ids[4], ToNodeID: ids[3]},
 	}
-	_, err = noAuthClient.InsertEdges(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
+	_, err = noAuthClient.InsertEdgesBatchAuto(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
 	if err != nil {
 		t.Fatalf("InsertEdges failed: %v", err)
 	}
@@ -190,7 +190,7 @@ func TestArticulationPointsNone(t *testing.T) {
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "Y"}},
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "Z"}},
 	}
-	nr, _ := noAuthClient.InsertNodes(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
+	nr, _ := noAuthClient.InsertNodesBatchAuto(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
 	// Triangle: X-Y, Y-Z, Z-X (no articulation points)
 	ids := nr.NodeIDs
 	edges := []*gqldb.EdgeData{
@@ -201,7 +201,7 @@ func TestArticulationPointsNone(t *testing.T) {
 		{Label: "L", FromNodeID: ids[2], ToNodeID: ids[0]},
 		{Label: "L", FromNodeID: ids[0], ToNodeID: ids[2]},
 	}
-	noAuthClient.InsertEdges(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
+	noAuthClient.InsertEdgesBatchAuto(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
 	noAuthClient.EndBulkImport(ctx, session.SessionID)
 	time.Sleep(1 * time.Second)
 
@@ -343,7 +343,7 @@ func TestArticulationPointsComplex(t *testing.T) {
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "E"}},
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "F"}},
 	}
-	nr, _ := noAuthClient.InsertNodes(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
+	nr, _ := noAuthClient.InsertNodesBatchAuto(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
 	ids := nr.NodeIDs
 
 	biEdge := func(from, to string) []*gqldb.EdgeData {
@@ -364,7 +364,7 @@ func TestArticulationPointsComplex(t *testing.T) {
 	edges = append(edges, biEdge(ids[4], ids[5])...)
 	edges = append(edges, biEdge(ids[5], ids[3])...)
 
-	noAuthClient.InsertEdges(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
+	noAuthClient.InsertEdgesBatchAuto(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
 	noAuthClient.EndBulkImport(ctx, session.SessionID)
 	time.Sleep(1 * time.Second)
 

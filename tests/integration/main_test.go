@@ -17,8 +17,8 @@ var noAuthClient *gqldb.Client // Client for server without authentication
 
 // Server addresses
 const (
-	authHost   = "192.168.1.103:60061" // Server with authentication
-	noAuthHost = "192.168.1.103:60062" // Server without authentication
+	authHost   = "192.168.1.100:60061" // Server with authentication
+	noAuthHost = "192.168.1.100:60062" // Server without authentication
 )
 
 func init() {

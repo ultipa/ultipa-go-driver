@@ -18,7 +18,7 @@ import (
 
 // Test configuration
 var (
-	host     = getEnv("GQLDB_HOST", "192.168.1.101:60061")
+	host     = getEnv("GQLDB_HOST", "192.168.1.100:60061")
 	username = getEnv("GQLDB_USERNAME", "admin")
 	password = getEnv("GQLDB_PASSWORD", "root11")
 	graph    = getEnv("GQLDB_TEST_GRAPH", "miniCircle")
@@ -34,7 +34,7 @@ func getEnv(key, defaultValue string) string {
 }
 
 func TestMain(m *testing.M) {
-tos.Setenv("NO_PROXY", "192.168.1.101")
+tos.Setenv("NO_PROXY", "192.168.1.100")
 	config := gqldb.NewConfigBuilder().
 		Hosts(host).
 		Username(username).
@@ -138,7 +138,7 @@ func BenchmarkNodeInsertSingle(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		node := gqldb.NewNodeData("BenchNode").WithProperty("id", int64(i))
-		_, err := benchClient.InsertNodes(ctx, graphName, "BenchNode", []gqldb.NodeData{node})
+		_, err := benchClient.InsertNodesBatchAuto(ctx, graphName, "BenchNode", []gqldb.NodeData{node})
 		if err != nil {
 			b.Errorf("Insert failed: %v", err)
 		}
@@ -165,7 +165,7 @@ func BenchmarkNodeInsertBatch(b *testing.B) {
 		for j := 0; j < batchSize; j++ {
 			nodes[j] = gqldb.NewNodeData("BenchNode").WithProperty("id", int64(i*batchSize+j))
 		}
-		_, err := benchClient.InsertNodes(ctx, graphName, "BenchNode", nodes)
+		_, err := benchClient.InsertNodesBatchAuto(ctx, graphName, "BenchNode", nodes)
 		if err != nil {
 			b.Errorf("Batch insert failed: %v", err)
 		}

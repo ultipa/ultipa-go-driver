@@ -16,8 +16,8 @@ import (
 
 // Test configuration
 var (
-	authHost   = getEnv("GQLDB_HOST", "192.168.1.101:60061")
-	noAuthHost = getEnv("GQLDB_NO_AUTH_HOST", "192.168.1.101:60062")
+	authHost   = getEnv("GQLDB_HOST", "192.168.1.100:60061")
+	noAuthHost = getEnv("GQLDB_NO_AUTH_HOST", "192.168.1.100:60062")
 	username   = getEnv("GQLDB_USERNAME", "admin")
 	password   = getEnv("GQLDB_PASSWORD", "root11")
 	graph      = getEnv("GQLDB_TEST_GRAPH", "miniCircle")

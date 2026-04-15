@@ -37,7 +37,7 @@ func setupDegreeTestGraph(t *testing.T, ctx context.Context) (string, func()) {
 		{Labels: []string{"Person"}, Properties: map[string]interface{}{"name": "B"}},
 		{Labels: []string{"Person"}, Properties: map[string]interface{}{"name": "C"}},
 	}
-	nr, err := noAuthClient.InsertNodes(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
+	nr, err := noAuthClient.InsertNodesBatchAuto(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
 	if err != nil {
 		t.Fatalf("InsertNodes failed: %v", err)
 	}
@@ -48,7 +48,7 @@ func setupDegreeTestGraph(t *testing.T, ctx context.Context) (string, func()) {
 		{Label: "KNOWS", FromNodeID: nr.NodeIDs[0], ToNodeID: nr.NodeIDs[2], Properties: map[string]interface{}{"w_int": int64(5), "w_f32": float32(0.9), "w_f64": float64(0.3)}},
 		{Label: "KNOWS", FromNodeID: nr.NodeIDs[2], ToNodeID: nr.NodeIDs[0], Properties: map[string]interface{}{"w_int": int64(15), "w_f32": float32(2.0), "w_f64": float64(1.1)}},
 	}
-	_, err = noAuthClient.InsertEdges(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
+	_, err = noAuthClient.InsertEdgesBatchAuto(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
 	if err != nil {
 		t.Fatalf("InsertEdges failed: %v", err)
 	}

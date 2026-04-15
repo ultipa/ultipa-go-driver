@@ -64,7 +64,7 @@ func setupSybilGraph(t *testing.T, ctx context.Context) (string, []string, func(
 		{Labels: []string{"User"}, Properties: map[string]interface{}{"name": "S3"}}, // 6 sybil
 		{Labels: []string{"User"}, Properties: map[string]interface{}{"name": "I1"}}, // 7 isolated
 	}
-	nr, _ := noAuthClient.InsertNodes(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
+	nr, _ := noAuthClient.InsertNodesBatchAuto(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
 	ids := nr.NodeIDs
 
 	biEdge := func(from, to string) []*gqldb.EdgeData {
@@ -86,7 +86,7 @@ func setupSybilGraph(t *testing.T, ctx context.Context) (string, []string, func(
 	edges = append(edges, biEdge(ids[5], ids[6])...)
 	edges = append(edges, biEdge(ids[6], ids[3])...)
 
-	noAuthClient.InsertEdges(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
+	noAuthClient.InsertEdgesBatchAuto(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
 	noAuthClient.EndBulkImport(ctx, session.SessionID)
 	time.Sleep(1 * time.Second)
 

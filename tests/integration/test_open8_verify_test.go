@@ -36,7 +36,7 @@ func setupOpen8Graph(t *testing.T, ctx context.Context) (string, []string, func(
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "B"}},
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "C"}},
 	}
-	nr, _ := noAuthClient.InsertNodes(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
+	nr, _ := noAuthClient.InsertNodesBatchAuto(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
 
 	edges := []*gqldb.EdgeData{
 		{Label: "E", FromNodeID: nr.NodeIDs[0], ToNodeID: nr.NodeIDs[1], Properties: map[string]interface{}{"w_int": int64(10), "w_f64": float64(1.5)}},
@@ -44,7 +44,7 @@ func setupOpen8Graph(t *testing.T, ctx context.Context) (string, []string, func(
 		{Label: "E", FromNodeID: nr.NodeIDs[0], ToNodeID: nr.NodeIDs[2], Properties: map[string]interface{}{"w_int": int64(5), "w_f64": float64(0.9)}},
 		{Label: "E", FromNodeID: nr.NodeIDs[2], ToNodeID: nr.NodeIDs[0], Properties: map[string]interface{}{"w_int": int64(15), "w_f64": float64(2.0)}},
 	}
-	noAuthClient.InsertEdges(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
+	noAuthClient.InsertEdgesBatchAuto(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
 	noAuthClient.EndBulkImport(ctx, session.SessionID)
 	time.Sleep(1 * time.Second)
 

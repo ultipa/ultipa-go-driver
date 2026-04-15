@@ -2,6 +2,7 @@ package gqldb
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	pb "github.com/ultipa/ultipa-go-driver/v6/proto"
@@ -17,6 +18,11 @@ type Client struct {
 	pool      *ConnectionPool
 	sessions  *SessionManager
 	txManager *TransactionManager
+
+	// Stored credentials for auto-reconnect
+	storedUsername string
+	storedPassword string
+	storedGraph   string
 
 	// gRPC service clients
 	sessionClient     pb.SessionServiceClient
@@ -150,6 +156,10 @@ func (c *Client) Login(ctx context.Context, username, password string) (*Session
 		return nil, NewError(0, "login failed", err)
 	}
 
+	// Store credentials for auto-reconnect
+	c.storedUsername = username
+	c.storedPassword = password
+
 	// Register session with SessionManager
 	session := c.sessions.Login(ctx, svcSession.ID, svcSession.ServerVersion, svcSession.Roles, svcSession.DefaultGraph, &ClusterInfo{
 		IsCluster:      svcSession.IsCluster,
@@ -157,6 +167,53 @@ func (c *Client) Login(ctx context.Context, username, password string) (*Session
 		PartitionCount: svcSession.PartitionCount,
 	})
 	return session, nil
+}
+
+// withAutoReconnect executes fn and, if the error is UNAUTHENTICATED,
+// re-logs in with stored credentials and retries fn exactly once.
+func (c *Client) withAutoReconnect(ctx context.Context, fn func() error) error {
+	err := fn()
+	if err == nil {
+		return nil
+	}
+
+	// Only auto-reconnect if we have stored credentials
+	if c.storedUsername == "" {
+		return err
+	}
+
+	// Check if error is UNAUTHENTICATED (gRPC status code or message text)
+	needsReconnect := false
+	if s, ok := status.FromError(err); ok && s.Code() == codes.Unauthenticated {
+		needsReconnect = true
+	}
+	if !needsReconnect {
+		errMsg := strings.ToLower(err.Error())
+		if strings.Contains(errMsg, "session not found") || strings.Contains(errMsg, "session expired") {
+			needsReconnect = true
+		}
+	}
+
+	if needsReconnect {
+		// Save current graph context before re-login
+		savedGraph := c.storedGraph
+
+		// Re-login with stored credentials
+		_, loginErr := c.Login(ctx, c.storedUsername, c.storedPassword)
+		if loginErr != nil {
+			return err // Return original error if re-login fails
+		}
+
+		// Restore graph context after re-login
+		if savedGraph != "" && savedGraph != "__system__" {
+			_ = c.UseGraph(ctx, savedGraph)
+		}
+
+		// Retry the call once
+		return fn()
+	}
+
+	return err
 }
 
 // Logout closes the current session.
@@ -193,14 +250,22 @@ func (c *Client) Gql(ctx context.Context, query string, config *QueryConfig) (*R
 		return nil, ErrEmptyQuery
 	}
 
-	svcConfig := c.convertToServiceQueryConfig(config)
-	svcResp, err := c.querySvc.Gql(ctx, query, svcConfig, c.newParameterAdapter,
-		c.sessions.GetDefaultGraph, func() int { return c.config.TimeoutSeconds() })
+	var resp *Response
+	err := c.withAutoReconnect(ctx, func() error {
+		svcConfig := c.convertToServiceQueryConfig(config)
+		svcResp, err := c.querySvc.Gql(ctx, query, svcConfig, c.newParameterAdapter,
+			c.sessions.GetDefaultGraph, func() int { return c.config.TimeoutSeconds() })
+		if err != nil {
+			return err
+		}
+		resp = c.convertFromServiceResponse(svcResp)
+		return nil
+	})
 	if err != nil {
 		return nil, NewError(0, "query failed", err)
 	}
 
-	return c.convertFromServiceResponse(svcResp), nil
+	return resp, nil
 }
 
 // GqlStream executes a GQL query and streams the results.
@@ -209,11 +274,13 @@ func (c *Client) GqlStream(ctx context.Context, query string, config *QueryConfi
 		return ErrEmptyQuery
 	}
 
-	svcConfig := c.convertToServiceQueryConfig(config)
-	err := c.querySvc.GqlStream(ctx, query, svcConfig, func(svcResp *services.Response) error {
-		resp := c.convertFromServiceResponse(svcResp)
-		return callback(resp)
-	}, c.newParameterAdapter, c.sessions.GetDefaultGraph, func() int { return c.config.TimeoutSeconds() })
+	err := c.withAutoReconnect(ctx, func() error {
+		svcConfig := c.convertToServiceQueryConfig(config)
+		return c.querySvc.GqlStream(ctx, query, svcConfig, func(svcResp *services.Response) error {
+			resp := c.convertFromServiceResponse(svcResp)
+			return callback(resp)
+		}, c.newParameterAdapter, c.sessions.GetDefaultGraph, func() int { return c.config.TimeoutSeconds() })
+	})
 
 	if err != nil {
 		return NewError(0, "stream query failed", err)
@@ -227,9 +294,14 @@ func (c *Client) Explain(ctx context.Context, query string, config *QueryConfig)
 		return "", ErrEmptyQuery
 	}
 
-	svcConfig := c.convertToServiceQueryConfig(config)
-	plan, err := c.querySvc.Explain(ctx, query, svcConfig, c.newParameterAdapter,
-		c.sessions.GetDefaultGraph, func() int { return c.config.TimeoutSeconds() })
+	var plan string
+	err := c.withAutoReconnect(ctx, func() error {
+		svcConfig := c.convertToServiceQueryConfig(config)
+		var e error
+		plan, e = c.querySvc.Explain(ctx, query, svcConfig, c.newParameterAdapter,
+			c.sessions.GetDefaultGraph, func() int { return c.config.TimeoutSeconds() })
+		return e
+	})
 	if err != nil {
 		return "", NewError(0, "explain failed", err)
 	}
@@ -242,9 +314,14 @@ func (c *Client) Profile(ctx context.Context, query string, config *QueryConfig)
 		return "", ErrEmptyQuery
 	}
 
-	svcConfig := c.convertToServiceQueryConfig(config)
-	profile, err := c.querySvc.Profile(ctx, query, svcConfig, c.newParameterAdapter,
-		c.sessions.GetDefaultGraph, func() int { return c.config.TimeoutSeconds() })
+	var profile string
+	err := c.withAutoReconnect(ctx, func() error {
+		svcConfig := c.convertToServiceQueryConfig(config)
+		var e error
+		profile, e = c.querySvc.Profile(ctx, query, svcConfig, c.newParameterAdapter,
+			c.sessions.GetDefaultGraph, func() int { return c.config.TimeoutSeconds() })
+		return e
+	})
 	if err != nil {
 		return "", NewError(0, "profile failed", err)
 	}
@@ -288,6 +365,7 @@ func (c *Client) UseGraph(ctx context.Context, name string) error {
 	if !success {
 		return NewError(0, message, nil)
 	}
+	c.storedGraph = name
 	return nil
 }
 
@@ -353,6 +431,8 @@ func (c *Client) BeginTransaction(ctx context.Context, graphName string, readOnl
 func (c *Client) Commit(ctx context.Context, transactionID uint64) (bool, error) {
 	success, err := c.transactionSvc.Commit(ctx, transactionID)
 	if err != nil {
+		// Clean up local state even if server commit fails
+		_ = c.txManager.Rollback(transactionID)
 		return false, NewError(0, "commit failed", err)
 	}
 
@@ -365,6 +445,8 @@ func (c *Client) Commit(ctx context.Context, transactionID uint64) (bool, error)
 func (c *Client) Rollback(ctx context.Context, transactionID uint64) (bool, error) {
 	success, err := c.transactionSvc.Rollback(ctx, transactionID)
 	if err != nil {
+		// Always clean up local state even if server rollback fails
+		_ = c.txManager.Rollback(transactionID)
 		return false, NewError(0, "rollback failed", err)
 	}
 
@@ -415,8 +497,8 @@ func (c *Client) WithTransaction(ctx context.Context, graphName string, readOnly
 // Data Service - Delegates to DataService
 // =============================================================================
 
-// InsertNodes inserts multiple nodes into a graph.
-func (c *Client) InsertNodes(ctx context.Context, graphName string, nodes []*NodeData, config *InsertNodesConfig) (*InsertNodesResult, error) {
+// InsertNodesBatchAuto inserts multiple nodes into a graph using gRPC bulk insert.
+func (c *Client) InsertNodesBatchAuto(ctx context.Context, graphName string, nodes []*NodeData, config *InsertNodesConfig) (*InsertNodesResult, error) {
 	svcNodes := make([]*services.NodeData, len(nodes))
 	for i, n := range nodes {
 		svcNodes[i] = &services.NodeData{
@@ -449,8 +531,8 @@ func (c *Client) InsertNodes(ctx context.Context, graphName string, nodes []*Nod
 	}, nil
 }
 
-// InsertEdges inserts multiple edges into a graph.
-func (c *Client) InsertEdges(ctx context.Context, graphName string, edges []*EdgeData, config *InsertEdgesConfig) (*InsertEdgesResult, error) {
+// InsertEdgesBatchAuto inserts multiple edges into a graph using gRPC bulk insert.
+func (c *Client) InsertEdgesBatchAuto(ctx context.Context, graphName string, edges []*EdgeData, config *InsertEdgesConfig) (*InsertEdgesResult, error) {
 	svcEdges := make([]*services.EdgeData, len(edges))
 	for i, e := range edges {
 		svcEdges[i] = &services.EdgeData{

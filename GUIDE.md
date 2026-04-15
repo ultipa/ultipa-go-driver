@@ -148,7 +148,7 @@ nodes := []*gqldb.NodeData{
         },
     },
 }
-_, err = client.InsertNodes(ctx, "myGraph", nodes, sessionId, nil)
+_, err = client.InsertNodesBatchAuto(ctx, "myGraph", nodes, sessionId, nil)
 
 // Insert edges
 edges := []*gqldb.EdgeData{
@@ -161,7 +161,7 @@ edges := []*gqldb.EdgeData{
         },
     },
 }
-_, err = client.InsertEdges(ctx, "myGraph", edges, sessionId, nil)
+_, err = client.InsertEdgesBatchAuto(ctx, "myGraph", edges, sessionId, nil)
 
 // End session
 _, err = client.EndBulkImport(ctx, sessionId)

@@ -68,7 +68,7 @@ func setupBTWGraph(t *testing.T, ctx context.Context) (string, []string, func())
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "D"}},
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "E"}},
 	}
-	nr, err := noAuthClient.InsertNodes(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
+	nr, err := noAuthClient.InsertNodesBatchAuto(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
 	if err != nil {
 		t.Fatalf("InsertNodes failed: %v", err)
 	}
@@ -87,7 +87,7 @@ func setupBTWGraph(t *testing.T, ctx context.Context) (string, []string, func())
 	edges = append(edges, biEdge(ids[0], ids[3])...) // A-D (shortcut)
 	edges = append(edges, biEdge(ids[3], ids[4])...) // D-E
 
-	_, err = noAuthClient.InsertEdges(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
+	_, err = noAuthClient.InsertEdgesBatchAuto(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
 	if err != nil {
 		t.Fatalf("InsertEdges failed: %v", err)
 	}

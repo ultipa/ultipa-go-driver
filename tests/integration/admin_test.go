@@ -10,6 +10,51 @@ import (
 	gqldb "github.com/ultipa/ultipa-go-driver/v6"
 )
 
+func TestWarmupParserZero(t *testing.T) {
+	if testClient == nil {
+		t.Skip("Auth client not available")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	err := testClient.WarmupParser(ctx, 0)
+	if err != nil {
+		t.Logf("WarmupParser with count=0 returned error: %v", err)
+	} else {
+		t.Log("WarmupParser with count=0 succeeded")
+	}
+}
+
+func TestWarmupParserNegative(t *testing.T) {
+	if testClient == nil {
+		t.Skip("Auth client not available")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	err := testClient.WarmupParser(ctx, -1)
+	if err != nil {
+		t.Logf("WarmupParser with count=-1 returned error (expected): %v", err)
+	} else {
+		t.Log("WarmupParser with count=-1 succeeded (server accepted it)")
+	}
+}
+
+func TestGetStatisticsNonexistent(t *testing.T) {
+	if testClient == nil {
+		t.Skip("Auth client not available")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	_, err := testClient.GetStatistics(ctx, "nonexistent_graph_xyz_999")
+	if err == nil {
+		t.Fatal("expected error when getting statistics for nonexistent graph")
+	}
+
+	t.Logf("Got expected error for nonexistent graph statistics: %v", err)
+}
+
 func TestWarmupParser(t *testing.T) {
 	if testClient == nil {
 		t.Skip("Auth client not available")

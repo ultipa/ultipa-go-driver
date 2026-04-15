@@ -75,7 +75,7 @@ func TestDegreeWithFloatWeight(t *testing.T) {
 		{Labels: []string{"Person"}, Properties: map[string]interface{}{"name": "B"}},
 		{Labels: []string{"Person"}, Properties: map[string]interface{}{"name": "C"}},
 	}
-	nodeResult, err := noAuthClient.InsertNodes(ctx, graphName, nodes, &gqldb.InsertNodesConfig{
+	nodeResult, err := noAuthClient.InsertNodesBatchAuto(ctx, graphName, nodes, &gqldb.InsertNodesConfig{
 		BulkImportSessionID: session.SessionID,
 	})
 	if err != nil {
@@ -93,7 +93,7 @@ func TestDegreeWithFloatWeight(t *testing.T) {
 		{Label: "KNOWS", FromNodeID: nodeResult.NodeIDs[1], ToNodeID: nodeResult.NodeIDs[2], Properties: map[string]interface{}{"weight_f32": float32(2.5), "weight_f64": float64(3.45678901)}},
 		{Label: "KNOWS", FromNodeID: nodeResult.NodeIDs[0], ToNodeID: nodeResult.NodeIDs[2], Properties: map[string]interface{}{"weight_f32": float32(1.1), "weight_f64": float64(0.99999999)}},
 	}
-	_, err = noAuthClient.InsertEdges(ctx, graphName, edges, &gqldb.InsertEdgesConfig{
+	_, err = noAuthClient.InsertEdgesBatchAuto(ctx, graphName, edges, &gqldb.InsertEdgesConfig{
 		BulkImportSessionID: session.SessionID,
 	})
 	if err != nil {
@@ -232,14 +232,14 @@ func TestDegreeWeightedFullYield(t *testing.T) {
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "B"}},
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "C"}},
 	}
-	nr, _ := noAuthClient.InsertNodes(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
+	nr, _ := noAuthClient.InsertNodesBatchAuto(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
 
 	edges := []*gqldb.EdgeData{
 		{Label: "E", FromNodeID: nr.NodeIDs[0], ToNodeID: nr.NodeIDs[1], Properties: map[string]interface{}{"w": float64(1.5)}},
 		{Label: "E", FromNodeID: nr.NodeIDs[1], ToNodeID: nr.NodeIDs[2], Properties: map[string]interface{}{"w": float64(2.3)}},
 		{Label: "E", FromNodeID: nr.NodeIDs[0], ToNodeID: nr.NodeIDs[2], Properties: map[string]interface{}{"w": float64(0.7)}},
 	}
-	noAuthClient.InsertEdges(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
+	noAuthClient.InsertEdgesBatchAuto(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
 	noAuthClient.EndBulkImport(ctx, session.SessionID)
 	time.Sleep(1 * time.Second)
 
@@ -307,7 +307,7 @@ func TestDegreeWeightParamTypes(t *testing.T) {
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "B"}},
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "C"}},
 	}
-	nr, _ := noAuthClient.InsertNodes(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
+	nr, _ := noAuthClient.InsertNodesBatchAuto(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
 
 	// Edges with int, float32, float64 weight properties
 	edges := []*gqldb.EdgeData{
@@ -321,7 +321,7 @@ func TestDegreeWeightParamTypes(t *testing.T) {
 			"w_int": int64(5), "w_f32": float32(0.9), "w_f64": float64(0.3),
 		}},
 	}
-	noAuthClient.InsertEdges(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
+	noAuthClient.InsertEdgesBatchAuto(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
 	noAuthClient.EndBulkImport(ctx, session.SessionID)
 	time.Sleep(1 * time.Second)
 

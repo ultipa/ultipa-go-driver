@@ -74,7 +74,7 @@ func setupBridgesGraph(t *testing.T, ctx context.Context) (string, []string, fun
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "F"}},
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "G"}},
 	}
-	nr, err := noAuthClient.InsertNodes(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
+	nr, err := noAuthClient.InsertNodesBatchAuto(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
 	if err != nil {
 		t.Fatalf("InsertNodes failed: %v", err)
 	}
@@ -100,7 +100,7 @@ func setupBridgesGraph(t *testing.T, ctx context.Context) (string, []string, fun
 	// Pendant: F-G
 	edges = append(edges, biEdge(ids[5], ids[6])...)
 
-	_, err = noAuthClient.InsertEdges(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
+	_, err = noAuthClient.InsertEdgesBatchAuto(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
 	if err != nil {
 		t.Fatalf("InsertEdges failed: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestBridgesNone(t *testing.T) {
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "Y"}},
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "Z"}},
 	}
-	nr, _ := noAuthClient.InsertNodes(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
+	nr, _ := noAuthClient.InsertNodesBatchAuto(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
 	ids := nr.NodeIDs
 	biEdge := func(from, to string) []*gqldb.EdgeData {
 		return []*gqldb.EdgeData{
@@ -198,7 +198,7 @@ func TestBridgesNone(t *testing.T) {
 	edges = append(edges, biEdge(ids[0], ids[1])...)
 	edges = append(edges, biEdge(ids[1], ids[2])...)
 	edges = append(edges, biEdge(ids[2], ids[0])...)
-	noAuthClient.InsertEdges(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
+	noAuthClient.InsertEdgesBatchAuto(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
 	noAuthClient.EndBulkImport(ctx, session.SessionID)
 	time.Sleep(1 * time.Second)
 
@@ -247,7 +247,7 @@ func TestBridgesLinear(t *testing.T) {
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "C"}},
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "D"}},
 	}
-	nr, _ := noAuthClient.InsertNodes(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
+	nr, _ := noAuthClient.InsertNodesBatchAuto(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
 	ids := nr.NodeIDs
 	biEdge := func(from, to string) []*gqldb.EdgeData {
 		return []*gqldb.EdgeData{
@@ -259,7 +259,7 @@ func TestBridgesLinear(t *testing.T) {
 	edges = append(edges, biEdge(ids[0], ids[1])...)
 	edges = append(edges, biEdge(ids[1], ids[2])...)
 	edges = append(edges, biEdge(ids[2], ids[3])...)
-	noAuthClient.InsertEdges(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
+	noAuthClient.InsertEdgesBatchAuto(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
 	noAuthClient.EndBulkImport(ctx, session.SessionID)
 	time.Sleep(1 * time.Second)
 

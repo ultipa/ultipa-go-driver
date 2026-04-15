@@ -85,7 +85,7 @@ func TestBulkImportWorkflow(t *testing.T) {
 	insertConfig := &gqldb.InsertNodesConfig{
 		BulkImportSessionID: session.SessionID,
 	}
-	nodeResult, err := testClient.InsertNodes(ctx, graphName, nodes, insertConfig)
+	nodeResult, err := testClient.InsertNodesBatchAuto(ctx, graphName, nodes, insertConfig)
 	if err != nil {
 		t.Fatalf("InsertNodes failed: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestAbortBulkImport(t *testing.T) {
 	insertConfig := &gqldb.InsertNodesConfig{
 		BulkImportSessionID: session.SessionID,
 	}
-	_, err = testClient.InsertNodes(ctx, graphName, nodes, insertConfig)
+	_, err = testClient.InsertNodesBatchAuto(ctx, graphName, nodes, insertConfig)
 	if err != nil {
 		t.Fatalf("InsertNodes failed: %v", err)
 	}
@@ -165,4 +165,164 @@ func TestAbortBulkImport(t *testing.T) {
 	}
 
 	t.Logf("Aborted bulk import session successfully")
+}
+
+func TestStartBulkImportNonexistentGraph(t *testing.T) {
+	t.Skip("Server bug: bulk import on nonexistent graph does not raise error (open12 #9)")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	_, err := testClient.StartBulkImport(ctx, "nonexistent_graph_xyz_999", nil)
+	if err == nil {
+		t.Fatal("expected error when starting bulk import on nonexistent graph")
+	}
+
+	t.Logf("Got expected error for nonexistent graph: %v", err)
+}
+
+func TestStartBulkImportEmptyGraph(t *testing.T) {
+	t.Skip("Server bug: bulk import with empty graph name does not raise error (open12 #10)")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	_, err := testClient.StartBulkImport(ctx, "", nil)
+	if err == nil {
+		t.Fatal("expected error when starting bulk import with empty graph name")
+	}
+
+	t.Logf("Got expected error for empty graph name: %v", err)
+}
+
+func TestCheckpoint(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	graphName := "test_checkpoint_" + time.Now().Format("20060102150405")
+
+	err := testClient.CreateGraph(ctx, graphName, gqldb.GraphTypeOpen, "Test graph for checkpoint")
+	if err != nil {
+		t.Fatalf("CreateGraph failed: %v", err)
+	}
+	defer dropTestGraph(graphName)
+
+	// Start bulk import session
+	session, err := testClient.StartBulkImport(ctx, graphName, nil)
+	if err != nil {
+		t.Fatalf("StartBulkImport failed: %v", err)
+	}
+
+	// Insert some nodes
+	nodes := []*gqldb.NodeData{
+		{
+			Labels:     []string{"CheckpointTest"},
+			Properties: map[string]interface{}{"name": "CP1"},
+		},
+		{
+			Labels:     []string{"CheckpointTest"},
+			Properties: map[string]interface{}{"name": "CP2"},
+		},
+	}
+
+	insertConfig := &gqldb.InsertNodesConfig{
+		BulkImportSessionID: session.SessionID,
+	}
+	_, err = testClient.InsertNodesBatchAuto(ctx, graphName, nodes, insertConfig)
+	if err != nil {
+		// Clean up on failure
+		testClient.AbortBulkImport(ctx, session.SessionID)
+		t.Fatalf("InsertNodes failed: %v", err)
+	}
+
+	// Explicit checkpoint
+	cpResult, err := testClient.Checkpoint(ctx, session.SessionID)
+	if err != nil {
+		testClient.AbortBulkImport(ctx, session.SessionID)
+		t.Fatalf("Checkpoint failed: %v", err)
+	}
+
+	if !cpResult.Success {
+		t.Errorf("Checkpoint returned success=false: %s", cpResult.Message)
+	}
+
+	t.Logf("Checkpoint: record_count=%d, last_checkpoint_count=%d",
+		cpResult.RecordCount, cpResult.LastCheckpointCount)
+
+	// End the session
+	_, err = testClient.EndBulkImport(ctx, session.SessionID)
+	if err != nil {
+		t.Fatalf("EndBulkImport failed: %v", err)
+	}
+}
+
+func TestGetBulkImportStatus(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	graphName := "test_status_" + time.Now().Format("20060102150405")
+
+	err := testClient.CreateGraph(ctx, graphName, gqldb.GraphTypeOpen, "Test graph for status")
+	if err != nil {
+		t.Fatalf("CreateGraph failed: %v", err)
+	}
+	defer dropTestGraph(graphName)
+
+	// Start bulk import session
+	session, err := testClient.StartBulkImport(ctx, graphName, nil)
+	if err != nil {
+		t.Fatalf("StartBulkImport failed: %v", err)
+	}
+
+	// Get status
+	status, err := testClient.GetBulkImportStatus(ctx, session.SessionID)
+	if err != nil {
+		testClient.AbortBulkImport(ctx, session.SessionID)
+		t.Fatalf("GetBulkImportStatus failed: %v", err)
+	}
+
+	t.Logf("Bulk import status: active=%v, graph=%s, records=%d",
+		status.IsActive, status.GraphName, status.RecordCount)
+
+	// Abort to clean up
+	_, err = testClient.AbortBulkImport(ctx, session.SessionID)
+	if err != nil {
+		t.Logf("AbortBulkImport failed (may be expected): %v", err)
+	}
+}
+
+func TestGetBulkImportStatusInvalidSession(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	_, err := testClient.GetBulkImportStatus(ctx, "invalid_session_id_xyz")
+	if err == nil {
+		t.Fatal("expected error when getting status with invalid session ID")
+	}
+
+	t.Logf("Got expected error for invalid session status: %v", err)
+}
+
+func TestEndBulkImportInvalidSession(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	_, err := testClient.EndBulkImport(ctx, "invalid_session_id_xyz")
+	if err == nil {
+		t.Fatal("expected error when ending invalid session ID")
+	}
+
+	t.Logf("Got expected error for invalid end session: %v", err)
+}
+
+func TestAbortBulkImportInvalidSession(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	_, err := testClient.AbortBulkImport(ctx, "invalid_session_id_xyz")
+	if err == nil {
+		t.Fatal("expected error when aborting invalid session ID")
+	}
+
+	t.Logf("Got expected error for invalid abort session: %v", err)
 }

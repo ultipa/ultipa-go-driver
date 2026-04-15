@@ -15,7 +15,7 @@ import (
 
 // Test configuration - can be overridden via environment variables
 var (
-	host     = getEnv("GQLDB_HOST", "192.168.1.101:60061")
+	host     = getEnv("GQLDB_HOST", "192.168.1.100:60061")
 	username = getEnv("GQLDB_USERNAME", "admin")
 	password = getEnv("GQLDB_PASSWORD", "root11")
 	graph    = getEnv("GQLDB_TEST_GRAPH", "miniCircle")

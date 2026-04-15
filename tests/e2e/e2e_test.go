@@ -18,7 +18,7 @@ import (
 
 // Test configuration
 var (
-	host     = getEnv("GQLDB_HOST", "192.168.1.101:60061")
+	host     = getEnv("GQLDB_HOST", "192.168.1.100:60061")
 	username = getEnv("GQLDB_USERNAME", "admin")
 	password = getEnv("GQLDB_PASSWORD", "root11")
 	graph    = getEnv("GQLDB_TEST_GRAPH", "miniCircle")
@@ -96,7 +96,7 @@ func TestCompleteCRUDLifecycle(t *testing.T) {
 		gqldb.NewNodeData("Person").WithProperty("name", "Bob").WithProperty("age", int64(25)),
 		gqldb.NewNodeData("Person").WithProperty("name", "Charlie").WithProperty("age", int64(35)),
 	}
-	_, err = client.InsertNodes(ctx, graphName, "Person", nodes)
+	_, err = client.InsertNodesBatchAuto(ctx, graphName, "Person", nodes)
 	if err != nil {
 		t.Fatalf("Failed to insert nodes: %v", err)
 	}

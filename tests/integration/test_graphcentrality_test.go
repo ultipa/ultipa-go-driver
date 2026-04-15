@@ -66,7 +66,7 @@ func setupGCGraph(t *testing.T, ctx context.Context) (string, []string, func()) 
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "D"}}, // 3
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "E"}}, // 4
 	}
-	nr, _ := noAuthClient.InsertNodes(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
+	nr, _ := noAuthClient.InsertNodesBatchAuto(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
 	ids := nr.NodeIDs
 
 	biEdge := func(from, to string) []*gqldb.EdgeData {
@@ -81,7 +81,7 @@ func setupGCGraph(t *testing.T, ctx context.Context) (string, []string, func()) 
 	edges = append(edges, biEdge(ids[2], ids[3])...) // C-D
 	edges = append(edges, biEdge(ids[3], ids[4])...) // D-E
 
-	noAuthClient.InsertEdges(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
+	noAuthClient.InsertEdgesBatchAuto(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
 	noAuthClient.EndBulkImport(ctx, session.SessionID)
 	time.Sleep(1 * time.Second)
 
@@ -585,7 +585,7 @@ func TestGCDisconnected(t *testing.T) {
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "C"}},
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "D"}},
 	}
-	nr, _ := noAuthClient.InsertNodes(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
+	nr, _ := noAuthClient.InsertNodesBatchAuto(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
 	ids := nr.NodeIDs
 	biEdge := func(from, to string) []*gqldb.EdgeData {
 		return []*gqldb.EdgeData{
@@ -596,7 +596,7 @@ func TestGCDisconnected(t *testing.T) {
 	var edges []*gqldb.EdgeData
 	edges = append(edges, biEdge(ids[0], ids[1])...) // A-B
 	edges = append(edges, biEdge(ids[2], ids[3])...) // C-D
-	noAuthClient.InsertEdges(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
+	noAuthClient.InsertEdgesBatchAuto(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
 	noAuthClient.EndBulkImport(ctx, session.SessionID)
 	time.Sleep(1 * time.Second)
 

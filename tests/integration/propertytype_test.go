@@ -98,7 +98,7 @@ func TestInsertNodesWithAllPropertyTypes(t *testing.T) {
 	}
 
 	config := &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID}
-	result, err := testClient.InsertNodes(ctx, graphName, nodes, config)
+	result, err := testClient.InsertNodesBatchAuto(ctx, graphName, nodes, config)
 	if err != nil {
 		t.Fatalf("InsertNodes with all PropertyTypes failed: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestInsertEdgesWithAllPropertyTypes(t *testing.T) {
 	}
 
 	nodeConfig := &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID}
-	_, err = testClient.InsertNodes(ctx, graphName, nodes, nodeConfig)
+	_, err = testClient.InsertNodesBatchAuto(ctx, graphName, nodes, nodeConfig)
 	if err != nil {
 		t.Fatalf("InsertNodes failed: %v", err)
 	}
@@ -228,7 +228,7 @@ func TestInsertEdgesWithAllPropertyTypes(t *testing.T) {
 	}
 
 	edgeConfig := &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID}
-	edgeResult, err := testClient.InsertEdges(ctx, graphName, edges, edgeConfig)
+	edgeResult, err := testClient.InsertEdgesBatchAuto(ctx, graphName, edges, edgeConfig)
 	if err != nil {
 		t.Fatalf("InsertEdges with all PropertyTypes failed: %v", err)
 	}
@@ -292,7 +292,7 @@ func insertAndQueryProperty(t *testing.T, ctx context.Context, graphName, propNa
 	}
 
 	config := &gqldb.InsertNodesConfig{BulkImportSessionID: sessionID}
-	result, err := testClient.InsertNodes(ctx, graphName, nodes, config)
+	result, err := testClient.InsertNodesBatchAuto(ctx, graphName, nodes, config)
 	if err != nil {
 		t.Fatalf("InsertNodes failed: %v", err)
 	}

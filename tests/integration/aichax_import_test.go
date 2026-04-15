@@ -101,14 +101,14 @@ func TestAichaxImport(t *testing.T) {
 		if len(nodeBatch) == 0 {
 			return nil
 		}
-		result, err := client.InsertNodes(ctx, "aichax", nodeBatch, &gqldb.InsertNodesConfig{
+		result, err := client.InsertNodesBatchAuto(ctx, "aichax", nodeBatch, &gqldb.InsertNodesConfig{
 			BulkImportSessionID: sessionID,
 		})
 		if err != nil {
-			return fmt.Errorf("InsertNodes failed: %w", err)
+			return fmt.Errorf("InsertNodesBatchAuto failed: %w", err)
 		}
 		if !result.Success {
-			return fmt.Errorf("InsertNodes failed: %s", result.Message)
+			return fmt.Errorf("InsertNodesBatchAuto failed: %s", result.Message)
 		}
 		nodesProcessed += result.NodeCount
 		recordsSinceCheckpoint += result.NodeCount
@@ -121,15 +121,15 @@ func TestAichaxImport(t *testing.T) {
 		if len(edgeBatch) == 0 {
 			return nil
 		}
-		result, err := client.InsertEdges(ctx, "aichax", edgeBatch, &gqldb.InsertEdgesConfig{
+		result, err := client.InsertEdgesBatchAuto(ctx, "aichax", edgeBatch, &gqldb.InsertEdgesConfig{
 			SkipInvalidNodes:    true,
 			BulkImportSessionID: sessionID,
 		})
 		if err != nil {
-			return fmt.Errorf("InsertEdges failed: %w", err)
+			return fmt.Errorf("InsertEdgesBatchAuto failed: %w", err)
 		}
 		if !result.Success {
-			return fmt.Errorf("InsertEdges failed: %s", result.Message)
+			return fmt.Errorf("InsertEdgesBatchAuto failed: %s", result.Message)
 		}
 		edgesProcessed += result.EdgeCount
 		recordsSinceCheckpoint += result.EdgeCount

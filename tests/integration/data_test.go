@@ -10,6 +10,148 @@ import (
 	gqldb "github.com/ultipa/ultipa-go-driver/v6"
 )
 
+func TestInsertNodesEmptyList(t *testing.T) {
+	if testClient == nil {
+		t.Skip("Auth client not available")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	graphName := "test_empty_insert_" + time.Now().Format("20060102150405")
+
+	// Create a test graph
+	err := testClient.CreateGraph(ctx, graphName, gqldb.GraphTypeOpen, "Test graph for empty insert")
+	if err != nil {
+		t.Fatalf("CreateGraph failed: %v", err)
+	}
+	defer dropTestGraph(graphName)
+
+	// Start bulk import session
+	session, err := testClient.StartBulkImport(ctx, graphName, nil)
+	if err != nil {
+		t.Fatalf("StartBulkImport failed: %v", err)
+	}
+	defer func() {
+		_, _ = testClient.EndBulkImport(ctx, session.SessionID)
+	}()
+
+	// Insert empty slice of nodes
+	nodes := []*gqldb.NodeData{}
+	config := &gqldb.InsertNodesConfig{
+		BulkImportSessionID: session.SessionID,
+	}
+	result, err := testClient.InsertNodesBatchAuto(ctx, graphName, nodes, config)
+	// Either returns error or success with 0 nodes - both acceptable
+	if err != nil {
+		t.Logf("InsertNodes with empty list returned error (acceptable): %v", err)
+	} else {
+		t.Logf("InsertNodes with empty list: success=%v, nodeCount=%d", result.Success, result.NodeCount)
+	}
+}
+
+func TestInsertEdgesNonexistentNode(t *testing.T) {
+	if testClient == nil {
+		t.Skip("Auth client not available")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	graphName := "test_bad_edge_" + time.Now().Format("20060102150405")
+
+	// Create a test graph
+	err := testClient.CreateGraph(ctx, graphName, gqldb.GraphTypeOpen, "Test graph for bad edge insert")
+	if err != nil {
+		t.Fatalf("CreateGraph failed: %v", err)
+	}
+	defer dropTestGraph(graphName)
+
+	// Start bulk import session
+	session, err := testClient.StartBulkImport(ctx, graphName, nil)
+	if err != nil {
+		t.Fatalf("StartBulkImport failed: %v", err)
+	}
+	defer func() {
+		_, _ = testClient.EndBulkImport(ctx, session.SessionID)
+	}()
+
+	// Insert edge referencing nonexistent node IDs
+	edges := []*gqldb.EdgeData{
+		{
+			Label:      "KNOWS",
+			FromNodeID: "nonexistent_node_id_1",
+			ToNodeID:   "nonexistent_node_id_2",
+			Properties: map[string]interface{}{"weight": int64(1)},
+		},
+	}
+	edgeConfig := &gqldb.InsertEdgesConfig{
+		BulkImportSessionID: session.SessionID,
+	}
+	result, err := testClient.InsertEdgesBatchAuto(ctx, graphName, edges, edgeConfig)
+	if err != nil {
+		t.Logf("InsertEdges with nonexistent nodes returned error (expected): %v", err)
+	} else if !result.Success {
+		t.Logf("InsertEdges with nonexistent nodes returned success=false (expected): %s", result.Message)
+	} else {
+		t.Logf("InsertEdges with nonexistent nodes returned success=true, edgeCount=%d", result.EdgeCount)
+	}
+}
+
+func TestDeleteNodesNonexistentId(t *testing.T) {
+	if testClient == nil {
+		t.Skip("Auth client not available")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	graphName := "test_del_noexist_" + time.Now().Format("20060102150405")
+
+	// Create a test graph
+	err := testClient.CreateGraph(ctx, graphName, gqldb.GraphTypeOpen, "Test graph for delete nonexistent nodes")
+	if err != nil {
+		t.Fatalf("CreateGraph failed: %v", err)
+	}
+	defer dropTestGraph(graphName)
+
+	// Delete nodes with nonexistent IDs - should succeed with 0 deleted
+	result, err := testClient.DeleteNodes(ctx, graphName, []string{"nonexistent_id_xyz"}, nil, "")
+	if err != nil {
+		t.Logf("DeleteNodes with nonexistent ID returned error: %v", err)
+	} else {
+		t.Logf("DeleteNodes with nonexistent ID: success=%v, deletedCount=%d", result.Success, result.DeletedCount)
+		if result.DeletedCount != 0 {
+			t.Errorf("expected 0 deleted, got %d", result.DeletedCount)
+		}
+	}
+}
+
+func TestDeleteEdgesNonexistentId(t *testing.T) {
+	if testClient == nil {
+		t.Skip("Auth client not available")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	graphName := "test_del_noexist_e_" + time.Now().Format("20060102150405")
+
+	// Create a test graph
+	err := testClient.CreateGraph(ctx, graphName, gqldb.GraphTypeOpen, "Test graph for delete nonexistent edges")
+	if err != nil {
+		t.Fatalf("CreateGraph failed: %v", err)
+	}
+	defer dropTestGraph(graphName)
+
+	// Delete edges with nonexistent IDs - should succeed with 0 deleted
+	result, err := testClient.DeleteEdges(ctx, graphName, []string{"nonexistent_edge_id_xyz"}, "", "")
+	if err != nil {
+		t.Logf("DeleteEdges with nonexistent ID returned error: %v", err)
+	} else {
+		t.Logf("DeleteEdges with nonexistent ID: success=%v, deletedCount=%d", result.Success, result.DeletedCount)
+		if result.DeletedCount != 0 {
+			t.Errorf("expected 0 deleted, got %d", result.DeletedCount)
+		}
+	}
+}
+
 func TestInsertNodes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -53,7 +195,7 @@ func TestInsertNodes(t *testing.T) {
 	config := &gqldb.InsertNodesConfig{
 		BulkImportSessionID: session.SessionID,
 	}
-	result, err := testClient.InsertNodes(ctx, graphName, nodes, config)
+	result, err := testClient.InsertNodesBatchAuto(ctx, graphName, nodes, config)
 	if err != nil {
 		t.Fatalf("InsertNodes failed: %v", err)
 	}
@@ -107,7 +249,7 @@ func TestInsertEdges(t *testing.T) {
 	nodeConfig := &gqldb.InsertNodesConfig{
 		BulkImportSessionID: session.SessionID,
 	}
-	_, err = testClient.InsertNodes(ctx, graphName, nodes, nodeConfig)
+	_, err = testClient.InsertNodesBatchAuto(ctx, graphName, nodes, nodeConfig)
 	if err != nil {
 		t.Fatalf("InsertNodes failed: %v", err)
 	}
@@ -150,7 +292,7 @@ func TestInsertEdges(t *testing.T) {
 	edgeConfig := &gqldb.InsertEdgesConfig{
 		BulkImportSessionID: session.SessionID,
 	}
-	edgeResult, err := testClient.InsertEdges(ctx, graphName, edges, edgeConfig)
+	edgeResult, err := testClient.InsertEdgesBatchAuto(ctx, graphName, edges, edgeConfig)
 	if err != nil {
 		t.Fatalf("InsertEdges failed: %v", err)
 	}
@@ -204,7 +346,7 @@ func TestDeleteNodes(t *testing.T) {
 	config := &gqldb.InsertNodesConfig{
 		BulkImportSessionID: session.SessionID,
 	}
-	insertResult, err := testClient.InsertNodes(ctx, graphName, nodes, config)
+	insertResult, err := testClient.InsertNodesBatchAuto(ctx, graphName, nodes, config)
 	if err != nil {
 		t.Fatalf("InsertNodes failed: %v", err)
 	}
@@ -298,7 +440,7 @@ func TestDeleteEdges(t *testing.T) {
 	nodeConfig := &gqldb.InsertNodesConfig{
 		BulkImportSessionID: session.SessionID,
 	}
-	_, err = testClient.InsertNodes(ctx, graphName, nodes, nodeConfig)
+	_, err = testClient.InsertNodesBatchAuto(ctx, graphName, nodes, nodeConfig)
 	if err != nil {
 		t.Fatalf("InsertNodes failed: %v", err)
 	}
@@ -341,7 +483,7 @@ func TestDeleteEdges(t *testing.T) {
 	edgeConfig := &gqldb.InsertEdgesConfig{
 		BulkImportSessionID: session.SessionID,
 	}
-	edgeResult, err := testClient.InsertEdges(ctx, graphName, edges, edgeConfig)
+	edgeResult, err := testClient.InsertEdgesBatchAuto(ctx, graphName, edges, edgeConfig)
 	if err != nil {
 		t.Fatalf("InsertEdges failed: %v", err)
 	}
@@ -423,7 +565,7 @@ func TestExport(t *testing.T) {
 	nodeConfig := &gqldb.InsertNodesConfig{
 		BulkImportSessionID: session.SessionID,
 	}
-	_, err = testClient.InsertNodes(ctx, graphName, nodes, nodeConfig)
+	_, err = testClient.InsertNodesBatchAuto(ctx, graphName, nodes, nodeConfig)
 	if err != nil {
 		t.Fatalf("InsertNodes failed: %v", err)
 	}
@@ -463,7 +605,7 @@ func TestExport(t *testing.T) {
 	edgeConfig := &gqldb.InsertEdgesConfig{
 		BulkImportSessionID: session.SessionID,
 	}
-	_, err = testClient.InsertEdges(ctx, graphName, edges, edgeConfig)
+	_, err = testClient.InsertEdgesBatchAuto(ctx, graphName, edges, edgeConfig)
 	if err != nil {
 		t.Fatalf("InsertEdges failed: %v", err)
 	}
@@ -564,7 +706,7 @@ func TestExportNodesOnly(t *testing.T) {
 	nodeConfig := &gqldb.InsertNodesConfig{
 		BulkImportSessionID: session.SessionID,
 	}
-	_, err = testClient.InsertNodes(ctx, graphName, nodes, nodeConfig)
+	_, err = testClient.InsertNodesBatchAuto(ctx, graphName, nodes, nodeConfig)
 	if err != nil {
 		t.Fatalf("InsertNodes failed: %v", err)
 	}
@@ -634,7 +776,7 @@ func TestExportWithLabelFilter(t *testing.T) {
 	nodeConfig := &gqldb.InsertNodesConfig{
 		BulkImportSessionID: session.SessionID,
 	}
-	_, err = testClient.InsertNodes(ctx, graphName, nodes, nodeConfig)
+	_, err = testClient.InsertNodesBatchAuto(ctx, graphName, nodes, nodeConfig)
 	if err != nil {
 		t.Fatalf("InsertNodes failed: %v", err)
 	}

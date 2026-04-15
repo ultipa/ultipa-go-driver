@@ -69,7 +69,7 @@ func setupHITSGraph(t *testing.T, ctx context.Context) (string, []string, func()
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "Z"}},  // 5 authority
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "iso"}}, // 6 isolated
 	}
-	nr, _ := noAuthClient.InsertNodes(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
+	nr, _ := noAuthClient.InsertNodesBatchAuto(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
 	ids := nr.NodeIDs
 
 	// Directed edges: hubs → authorities
@@ -82,7 +82,7 @@ func setupHITSGraph(t *testing.T, ctx context.Context) (string, []string, func()
 		{Label: "LINKS", FromNodeID: ids[2], ToNodeID: ids[5]}, // C→Z
 		{Label: "LINKS", FromNodeID: ids[5], ToNodeID: ids[0]}, // Z→A (feedback)
 	}
-	noAuthClient.InsertEdges(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
+	noAuthClient.InsertEdgesBatchAuto(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
 	noAuthClient.EndBulkImport(ctx, session.SessionID)
 	time.Sleep(1 * time.Second)
 

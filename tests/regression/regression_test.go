@@ -16,7 +16,7 @@ import (
 
 // Test configuration
 var (
-	host     = getEnv("GQLDB_HOST", "192.168.1.101:60061")
+	host     = getEnv("GQLDB_HOST", "192.168.1.100:60061")
 	username = getEnv("GQLDB_USERNAME", "admin")
 	password = getEnv("GQLDB_PASSWORD", "root11")
 	graph    = getEnv("GQLDB_TEST_GRAPH", "miniCircle")
@@ -32,7 +32,7 @@ func getEnv(key, defaultValue string) string {
 }
 
 func TestMain(m *testing.M) {
-tos.Setenv("NO_PROXY", "192.168.1.101")
+tos.Setenv("NO_PROXY", "192.168.1.100")
 	config := gqldb.NewConfigBuilder().
 		Hosts(host).
 		Username(username).

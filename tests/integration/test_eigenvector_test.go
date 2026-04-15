@@ -67,7 +67,7 @@ func setupEVGraph(t *testing.T, ctx context.Context) (string, []string, func()) 
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "D"}},   // 4
 		{Labels: []string{"N"}, Properties: map[string]interface{}{"name": "E"}},   // 5
 	}
-	nr, _ := noAuthClient.InsertNodes(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
+	nr, _ := noAuthClient.InsertNodesBatchAuto(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
 	ids := nr.NodeIDs
 
 	biEdge := func(from, to string) []*gqldb.EdgeData {
@@ -85,7 +85,7 @@ func setupEVGraph(t *testing.T, ctx context.Context) (string, []string, func()) 
 	edges = append(edges, biEdge(ids[2], ids[3])...) // B-C
 	edges = append(edges, biEdge(ids[4], ids[5])...) // D-E
 
-	noAuthClient.InsertEdges(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
+	noAuthClient.InsertEdgesBatchAuto(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
 	noAuthClient.EndBulkImport(ctx, session.SessionID)
 	time.Sleep(1 * time.Second)
 

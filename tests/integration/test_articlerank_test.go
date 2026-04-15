@@ -74,7 +74,7 @@ func setupArticleRankGraph(t *testing.T, ctx context.Context) (string, []string,
 		{Labels: []string{"Paper"}, Properties: map[string]interface{}{"name": "D"}},
 		{Labels: []string{"Paper"}, Properties: map[string]interface{}{"name": "E"}},
 	}
-	nr, err := noAuthClient.InsertNodes(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
+	nr, err := noAuthClient.InsertNodesBatchAuto(ctx, graphName, nodes, &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID})
 	if err != nil {
 		t.Fatalf("InsertNodes failed: %v", err)
 	}
@@ -88,7 +88,7 @@ func setupArticleRankGraph(t *testing.T, ctx context.Context) (string, []string,
 		{Label: "CITES", FromNodeID: ids[2], ToNodeID: ids[3], Properties: map[string]interface{}{"w_int": int64(1), "w_f64": float64(0.5)}},
 		{Label: "CITES", FromNodeID: ids[3], ToNodeID: ids[4], Properties: map[string]interface{}{"w_int": int64(4), "w_f64": float64(1.2)}},
 	}
-	_, err = noAuthClient.InsertEdges(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
+	_, err = noAuthClient.InsertEdgesBatchAuto(ctx, graphName, edges, &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID})
 	if err != nil {
 		t.Fatalf("InsertEdges failed: %v", err)
 	}

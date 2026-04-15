@@ -41,7 +41,7 @@ func TestAsNodes_WithRealData(t *testing.T) {
 		{Labels: []string{"Person"}, Properties: map[string]interface{}{"name": "Bob", "age": int64(25)}},
 	}
 	config := &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID}
-	_, err = testClient.InsertNodes(ctx, graphName, nodes, config)
+	_, err = testClient.InsertNodesBatchAuto(ctx, graphName, nodes, config)
 	if err != nil {
 		t.Fatalf("Failed to insert nodes: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestAsEdges_WithRealData(t *testing.T) {
 		{Labels: []string{"EdgeTestPerson"}, Properties: map[string]interface{}{"name": "Eve"}},
 	}
 	config := &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID}
-	_, err = testClient.InsertNodes(ctx, graphName, nodes, config)
+	_, err = testClient.InsertNodesBatchAuto(ctx, graphName, nodes, config)
 	if err != nil {
 		t.Fatalf("Failed to insert nodes: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestAsEdges_WithRealData(t *testing.T) {
 		},
 	}
 	edgeConfig := &gqldb.InsertEdgesConfig{BulkImportSessionID: session.SessionID}
-	_, err = testClient.InsertEdges(ctx, graphName, edges, edgeConfig)
+	_, err = testClient.InsertEdgesBatchAuto(ctx, graphName, edges, edgeConfig)
 	if err != nil {
 		t.Fatalf("Failed to insert edges: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestAsTable_WithRealData(t *testing.T) {
 		{Labels: []string{"TableTest"}, Properties: map[string]interface{}{"val": int64(2)}},
 	}
 	config := &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID}
-	_, err = testClient.InsertNodes(ctx, graphName, nodes, config)
+	_, err = testClient.InsertNodesBatchAuto(ctx, graphName, nodes, config)
 	if err != nil {
 		t.Fatalf("Failed to insert nodes: %v", err)
 	}
@@ -290,7 +290,7 @@ func TestAsAttr_WithRealData(t *testing.T) {
 		{Labels: []string{"AttrTest"}, Properties: map[string]interface{}{"name": "Charlie"}},
 	}
 	config := &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID}
-	_, err = testClient.InsertNodes(ctx, graphName, nodes, config)
+	_, err = testClient.InsertNodesBatchAuto(ctx, graphName, nodes, config)
 	if err != nil {
 		t.Fatalf("Failed to insert nodes: %v", err)
 	}
@@ -352,7 +352,7 @@ func TestPrintAny_AutoDetection(t *testing.T) {
 		{Labels: []string{"PrintAnyTest"}, Properties: map[string]interface{}{"val": int64(1)}},
 	}
 	config := &gqldb.InsertNodesConfig{BulkImportSessionID: session.SessionID}
-	_, err = testClient.InsertNodes(ctx, graphName, nodes, config)
+	_, err = testClient.InsertNodesBatchAuto(ctx, graphName, nodes, config)
 	if err != nil {
 		t.Fatalf("Failed to insert nodes: %v", err)
 	}

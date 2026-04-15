@@ -3,6 +3,7 @@ package gqldb
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/ultipa/ultipa-go-driver/v6/types"
@@ -1094,7 +1095,35 @@ func formatGqlValue(v interface{}) string {
 		return fmt.Sprintf("%g", val)
 	case float64:
 		return fmt.Sprintf("%g", val)
+	case []interface{}:
+		elems := make([]string, len(val))
+		for i, elem := range val {
+			elems[i] = formatGqlValue(elem)
+		}
+		return "[" + strings.Join(elems, ", ") + "]"
+	case map[string]interface{}:
+		kvParts := make([]string, 0, len(val))
+		for mk, mv := range val {
+			kvParts = append(kvParts, fmt.Sprintf("%s: %s", mk, formatGqlValue(mv)))
+		}
+		return "{" + strings.Join(kvParts, ", ") + "}"
 	default:
+		// Use reflect to handle typed slices (e.g. []int, []string) and maps
+		rv := reflect.ValueOf(v)
+		switch rv.Kind() {
+		case reflect.Slice, reflect.Array:
+			elems := make([]string, rv.Len())
+			for i := 0; i < rv.Len(); i++ {
+				elems[i] = formatGqlValue(rv.Index(i).Interface())
+			}
+			return "[" + strings.Join(elems, ", ") + "]"
+		case reflect.Map:
+			kvParts := make([]string, 0, rv.Len())
+			for _, key := range rv.MapKeys() {
+				kvParts = append(kvParts, fmt.Sprintf("%s: %s", key, formatGqlValue(rv.MapIndex(key).Interface())))
+			}
+			return "{" + strings.Join(kvParts, ", ") + "}"
+		}
 		return fmt.Sprintf("'%v'", v)
 	}
 }

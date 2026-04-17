@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"io"
+	"strings"
 	"time"
 
 	pb "github.com/ultipa/ultipa-go-driver/v6/proto"
@@ -76,6 +77,16 @@ func (s *QueryService) Gql(ctx context.Context, query string, config *QueryConfi
 	}
 
 	s.ctx.UpdateActivity()
+
+	// Update default graph if the query is a USE GRAPH statement
+	stripped := strings.TrimSpace(query)
+	if strings.HasPrefix(strings.ToUpper(stripped), "USE GRAPH") {
+		newGraph := strings.TrimSpace(strings.TrimRight(strings.TrimSpace(stripped[len("USE GRAPH"):]), ";"))
+		if newGraph != "" {
+			s.ctx.SetDefaultGraph(newGraph)
+		}
+	}
+
 	return s.convertGqlResponse(resp)
 }
 

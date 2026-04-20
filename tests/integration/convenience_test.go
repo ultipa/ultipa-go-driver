@@ -24,7 +24,7 @@ func createClosedGraphWithLabels(t *testing.T, suffix string) string {
 	graphName := "test_conv_" + suffix + "_" + time.Now().Format("150405")
 
 	// Create closed graph
-	_, err := testClient.CreateClosedGraph(ctx, graphName)
+	_, err := testClient.CreateClosedGraph(ctx, graphName, nil)
 	if err != nil {
 		t.Fatalf("CreateClosedGraph(%s) failed: %v", graphName, err)
 	}
@@ -39,7 +39,7 @@ func createClosedGraphWithLabels(t *testing.T, suffix string) string {
 	_, err = testClient.CreateNodeLabel(ctx, "Person", []types.PropertyDef{
 		{Name: "name", Type: types.PropertyTypeString},
 		{Name: "age", Type: types.PropertyTypeInt64},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateNodeLabel(Person) failed: %v", err)
 	}
@@ -47,7 +47,7 @@ func createClosedGraphWithLabels(t *testing.T, suffix string) string {
 	// Add an edge label with properties
 	_, err = testClient.CreateEdgeLabel(ctx, "KNOWS", []types.PropertyDef{
 		{Name: "since", Type: types.PropertyTypeInt64},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateEdgeLabel(KNOWS) failed: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestConvenience_CreateOpenGraph(t *testing.T) {
 	graphName := "test_conv_open_" + time.Now().Format("150405")
 	defer dropTestGraph(graphName)
 
-	resp, err := testClient.CreateOpenGraph(ctx, graphName)
+	resp, err := testClient.CreateOpenGraph(ctx, graphName, nil)
 	if err != nil {
 		t.Fatalf("CreateOpenGraph failed: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestConvenience_CreateClosedGraph(t *testing.T) {
 	graphName := "test_conv_closed_" + time.Now().Format("150405")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateClosedGraph(ctx, graphName)
+	_, err := testClient.CreateClosedGraph(ctx, graphName, nil)
 	if err != nil {
 		t.Fatalf("CreateClosedGraph failed: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestConvenience_CreateGraphIfNotExist_Existing(t *testing.T) {
 	defer dropTestGraph(graphName)
 
 	// Create first
-	_, err := testClient.CreateOpenGraph(ctx, graphName)
+	_, err := testClient.CreateOpenGraph(ctx, graphName, nil)
 	if err != nil {
 		t.Fatalf("CreateOpenGraph failed: %v", err)
 	}
@@ -199,12 +199,12 @@ func TestConvenience_AlterGraph(t *testing.T) {
 	defer dropTestGraph(graphName)
 	defer dropTestGraph(newName)
 
-	_, err := testClient.CreateOpenGraph(ctx, graphName)
+	_, err := testClient.CreateOpenGraph(ctx, graphName, nil)
 	if err != nil {
 		t.Fatalf("CreateOpenGraph failed: %v", err)
 	}
 
-	_, err = testClient.AlterGraph(ctx, graphName, newName)
+	_, err = testClient.AlterGraph(ctx, graphName, newName, nil)
 	if err != nil {
 		t.Fatalf("AlterGraph failed: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestConvenience_Truncate(t *testing.T) {
 	graphName := "test_conv_trunc_" + time.Now().Format("150405")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateOpenGraph(ctx, graphName)
+	_, err := testClient.CreateOpenGraph(ctx, graphName, nil)
 	if err != nil {
 		t.Fatalf("CreateOpenGraph failed: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestConvenience_Truncate(t *testing.T) {
 	}
 
 	// Truncate
-	_, err = testClient.Truncate(ctx, graphName)
+	_, err = testClient.Truncate(ctx, graphName, nil)
 	if err != nil {
 		t.Fatalf("Truncate failed: %v", err)
 	}
@@ -279,7 +279,7 @@ func TestConvenience_ShowLabels(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "showlbl")
 	defer dropTestGraph(graphName)
 
-	labels, err := testClient.ShowLabels(ctx)
+	labels, err := testClient.ShowLabels(ctx, nil)
 	if err != nil {
 		t.Fatalf("ShowLabels failed: %v", err)
 	}
@@ -290,12 +290,20 @@ func TestConvenience_ShowLabels(t *testing.T) {
 	foundNode := false
 	foundEdge := false
 	for _, l := range labels {
-		t.Logf("Label: name=%s type=%s", l.Name, l.Type)
-		if l.Name == "Person" && l.Type == "NODE" {
-			foundNode = true
+		t.Logf("Label: labels=%v type=%s", l.Labels, l.Type)
+		if l.Type == "NODE" {
+			for _, n := range l.Labels {
+				if n == "Person" {
+					foundNode = true
+				}
+			}
 		}
-		if l.Name == "KNOWS" && l.Type == "EDGE" {
-			foundEdge = true
+		if l.Type == "EDGE" {
+			for _, n := range l.Labels {
+				if n == "KNOWS" {
+					foundEdge = true
+				}
+			}
 		}
 	}
 	if !foundNode {
@@ -316,7 +324,7 @@ func TestConvenience_ShowNodeLabels(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "shownlbl")
 	defer dropTestGraph(graphName)
 
-	labels, err := testClient.ShowNodeLabels(ctx)
+	labels, err := testClient.ShowNodeLabels(ctx, nil)
 	if err != nil {
 		t.Fatalf("ShowNodeLabels failed: %v", err)
 	}
@@ -324,7 +332,7 @@ func TestConvenience_ShowNodeLabels(t *testing.T) {
 		t.Errorf("expected at least 1 node label, got %d", len(labels))
 	}
 	for _, l := range labels {
-		t.Logf("Node label: name=%s type=%s", l.Name, l.Type)
+		t.Logf("Node label: labels=%v type=%s", l.Labels, l.Type)
 	}
 }
 
@@ -338,7 +346,7 @@ func TestConvenience_ShowEdgeLabels(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "showelbl")
 	defer dropTestGraph(graphName)
 
-	labels, err := testClient.ShowEdgeLabels(ctx)
+	labels, err := testClient.ShowEdgeLabels(ctx, nil)
 	if err != nil {
 		t.Fatalf("ShowEdgeLabels failed: %v", err)
 	}
@@ -346,7 +354,7 @@ func TestConvenience_ShowEdgeLabels(t *testing.T) {
 		t.Errorf("expected at least 1 edge label, got %d", len(labels))
 	}
 	for _, l := range labels {
-		t.Logf("Edge label: name=%s type=%s", l.Name, l.Type)
+		t.Logf("Edge label: labels=%v type=%s", l.Labels, l.Type)
 	}
 }
 
@@ -360,7 +368,7 @@ func TestConvenience_ShowNodeTypes(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "showntype")
 	defer dropTestGraph(graphName)
 
-	nodeTypes, err := testClient.ShowNodeTypes(ctx)
+	nodeTypes, err := testClient.ShowNodeTypes(ctx, nil)
 	if err != nil {
 		t.Fatalf("ShowNodeTypes failed: %v", err)
 	}
@@ -382,7 +390,7 @@ func TestConvenience_ShowEdgeTypes(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "showetype")
 	defer dropTestGraph(graphName)
 
-	edgeTypes, err := testClient.ShowEdgeTypes(ctx)
+	edgeTypes, err := testClient.ShowEdgeTypes(ctx, nil)
 	if err != nil {
 		t.Fatalf("ShowEdgeTypes failed: %v", err)
 	}
@@ -404,17 +412,24 @@ func TestConvenience_GetLabel_Existing(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "getlbl")
 	defer dropTestGraph(graphName)
 
-	label, err := testClient.GetLabel(ctx,"Person")
+	label, err := testClient.GetLabel(ctx, "Person", nil)
 	if err != nil {
 		t.Fatalf("GetLabel failed: %v", err)
 	}
 	if label == nil {
 		t.Fatal("expected non-nil label for 'Person'")
 	}
-	if label.Name != "Person" {
-		t.Errorf("expected label name 'Person', got %q", label.Name)
+	found := false
+	for _, n := range label.Labels {
+		if n == "Person" {
+			found = true
+			break
+		}
 	}
-	t.Logf("GetLabel: name=%s type=%s", label.Name, label.Type)
+	if !found {
+		t.Errorf("expected label.Labels to contain 'Person', got %v", label.Labels)
+	}
+	t.Logf("GetLabel: labels=%v type=%s", label.Labels, label.Type)
 }
 
 func TestConvenience_GetLabel_Nonexistent(t *testing.T) {
@@ -427,7 +442,7 @@ func TestConvenience_GetLabel_Nonexistent(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "getlblne")
 	defer dropTestGraph(graphName)
 
-	label, err := testClient.GetLabel(ctx,"NonexistentLabel")
+	label, err := testClient.GetLabel(ctx, "NonexistentLabel", nil)
 	if err != nil {
 		t.Fatalf("GetLabel (nonexistent) failed: %v", err)
 	}
@@ -446,7 +461,7 @@ func TestConvenience_GetNodeLabel_Existing(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "getnlbl")
 	defer dropTestGraph(graphName)
 
-	nt, err := testClient.GetNodeLabel(ctx,"Person")
+	nt, err := testClient.GetNodeLabel(ctx, "Person", nil)
 	if err != nil {
 		t.Fatalf("GetNodeLabel failed: %v", err)
 	}
@@ -472,7 +487,7 @@ func TestConvenience_GetNodeLabel_Nonexistent(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "getnlblne")
 	defer dropTestGraph(graphName)
 
-	nt, err := testClient.GetNodeLabel(ctx,"NoSuchNode")
+	nt, err := testClient.GetNodeLabel(ctx, "NoSuchNode", nil)
 	if err != nil {
 		t.Fatalf("GetNodeLabel (nonexistent) failed: %v", err)
 	}
@@ -491,7 +506,7 @@ func TestConvenience_GetEdgeLabel_Existing(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "getelbl")
 	defer dropTestGraph(graphName)
 
-	et, err := testClient.GetEdgeLabel(ctx,"KNOWS")
+	et, err := testClient.GetEdgeLabel(ctx, "KNOWS", nil)
 	if err != nil {
 		t.Fatalf("GetEdgeLabel failed: %v", err)
 	}
@@ -514,7 +529,7 @@ func TestConvenience_GetEdgeLabel_Nonexistent(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "getelblne")
 	defer dropTestGraph(graphName)
 
-	et, err := testClient.GetEdgeLabel(ctx,"NO_SUCH_EDGE")
+	et, err := testClient.GetEdgeLabel(ctx, "NO_SUCH_EDGE", nil)
 	if err != nil {
 		t.Fatalf("GetEdgeLabel (nonexistent) failed: %v", err)
 	}
@@ -533,7 +548,7 @@ func TestConvenience_CreateNodeLabel(t *testing.T) {
 	graphName := "test_conv_crnlbl_" + time.Now().Format("150405")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateClosedGraph(ctx, graphName)
+	_, err := testClient.CreateClosedGraph(ctx, graphName, nil)
 	if err != nil {
 		t.Fatalf("CreateClosedGraph failed: %v", err)
 	}
@@ -541,13 +556,13 @@ func TestConvenience_CreateNodeLabel(t *testing.T) {
 	_, err = testClient.CreateNodeLabel(ctx, "Animal", []types.PropertyDef{
 		{Name: "species", Type: types.PropertyTypeString},
 		{Name: "weight", Type: types.PropertyTypeDouble},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateNodeLabel failed: %v", err)
 	}
 
 	// Verify
-	nt, err := testClient.GetNodeLabel(ctx,"Animal")
+	nt, err := testClient.GetNodeLabel(ctx, "Animal", nil)
 	if err != nil {
 		t.Fatalf("GetNodeLabel failed: %v", err)
 	}
@@ -567,20 +582,20 @@ func TestConvenience_CreateEdgeLabel(t *testing.T) {
 	graphName := "test_conv_crelbl_" + time.Now().Format("150405")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateClosedGraph(ctx, graphName)
+	_, err := testClient.CreateClosedGraph(ctx, graphName, nil)
 	if err != nil {
 		t.Fatalf("CreateClosedGraph failed: %v", err)
 	}
 
 	_, err = testClient.CreateEdgeLabel(ctx, "FOLLOWS", []types.PropertyDef{
 		{Name: "since", Type: types.PropertyTypeInt64},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateEdgeLabel failed: %v", err)
 	}
 
 	// Verify
-	et, err := testClient.GetEdgeLabel(ctx,"FOLLOWS")
+	et, err := testClient.GetEdgeLabel(ctx, "FOLLOWS", nil)
 	if err != nil {
 		t.Fatalf("GetEdgeLabel failed: %v", err)
 	}
@@ -600,13 +615,13 @@ func TestConvenience_DropNodeLabel(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "dropnlbl")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.DropNodeLabel(ctx,"Person")
+	_, err := testClient.DropNodeLabel(ctx, "Person", nil)
 	if err != nil {
 		t.Fatalf("DropNodeLabel failed: %v", err)
 	}
 
 	// Verify removed
-	nt, err := testClient.GetNodeLabel(ctx,"Person")
+	nt, err := testClient.GetNodeLabel(ctx, "Person", nil)
 	if err != nil {
 		t.Fatalf("GetNodeLabel after drop failed: %v", err)
 	}
@@ -625,13 +640,13 @@ func TestConvenience_DropEdgeLabel(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "dropelbl")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.DropEdgeLabel(ctx,"KNOWS")
+	_, err := testClient.DropEdgeLabel(ctx, nil, "KNOWS")
 	if err != nil {
 		t.Fatalf("DropEdgeLabel failed: %v", err)
 	}
 
 	// Verify removed
-	et, err := testClient.GetEdgeLabel(ctx,"KNOWS")
+	et, err := testClient.GetEdgeLabel(ctx, "KNOWS", nil)
 	if err != nil {
 		t.Fatalf("GetEdgeLabel after drop failed: %v", err)
 	}
@@ -650,9 +665,9 @@ func TestConvenience_CreateLabelIfNotExist_New(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "lblifnot")
 	defer dropTestGraph(graphName)
 
-	created, err := testClient.CreateLabelIfNotExist(ctx,types.DBTypeNode, "City", []types.PropertyDef{
+	created, err := testClient.CreateLabelIfNotExist(ctx, types.DBTypeNode, "City", []types.PropertyDef{
 		{Name: "name", Type: types.PropertyTypeString},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateLabelIfNotExist (new) failed: %v", err)
 	}
@@ -672,9 +687,9 @@ func TestConvenience_CreateLabelIfNotExist_Existing(t *testing.T) {
 	defer dropTestGraph(graphName)
 
 	// 'Person' already exists from createClosedGraphWithLabels
-	created, err := testClient.CreateLabelIfNotExist(ctx,types.DBTypeNode, "Person", []types.PropertyDef{
+	created, err := testClient.CreateLabelIfNotExist(ctx, types.DBTypeNode, "Person", []types.PropertyDef{
 		{Name: "name", Type: types.PropertyTypeString},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateLabelIfNotExist (existing) failed: %v", err)
 	}
@@ -693,13 +708,13 @@ func TestConvenience_AlterNodeLabel(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "altnlbl")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.AlterNodeLabel(ctx,"Person", "Human")
+	_, err := testClient.AlterNodeLabel(ctx, "Person", "Human", nil)
 	if err != nil {
 		t.Fatalf("AlterNodeLabel failed: %v", err)
 	}
 
 	// Verify old name gone, new name present
-	oldNT, err := testClient.GetNodeLabel(ctx,"Person")
+	oldNT, err := testClient.GetNodeLabel(ctx, "Person", nil)
 	if err != nil {
 		t.Fatalf("GetNodeLabel (old) failed: %v", err)
 	}
@@ -707,7 +722,7 @@ func TestConvenience_AlterNodeLabel(t *testing.T) {
 		t.Error("expected old node label 'Person' to not exist after rename")
 	}
 
-	newNT, err := testClient.GetNodeLabel(ctx,"Human")
+	newNT, err := testClient.GetNodeLabel(ctx, "Human", nil)
 	if err != nil {
 		t.Fatalf("GetNodeLabel (new) failed: %v", err)
 	}
@@ -726,12 +741,12 @@ func TestConvenience_AlterEdgeLabel(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "altelbl")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.AlterEdgeLabel(ctx,"KNOWS", "FRIENDS_WITH")
+	_, err := testClient.AlterEdgeLabel(ctx, "KNOWS", "FRIENDS_WITH", nil)
 	if err != nil {
 		t.Fatalf("AlterEdgeLabel failed: %v", err)
 	}
 
-	oldET, err := testClient.GetEdgeLabel(ctx,"KNOWS")
+	oldET, err := testClient.GetEdgeLabel(ctx, "KNOWS", nil)
 	if err != nil {
 		t.Fatalf("GetEdgeLabel (old) failed: %v", err)
 	}
@@ -739,7 +754,7 @@ func TestConvenience_AlterEdgeLabel(t *testing.T) {
 		t.Error("expected old edge label 'KNOWS' to not exist after rename")
 	}
 
-	newET, err := testClient.GetEdgeLabel(ctx,"FRIENDS_WITH")
+	newET, err := testClient.GetEdgeLabel(ctx, "FRIENDS_WITH", nil)
 	if err != nil {
 		t.Fatalf("GetEdgeLabel (new) failed: %v", err)
 	}
@@ -755,7 +770,7 @@ func TestConvenience_ShowAlgos(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	algos, err := testClient.ShowAlgos(ctx)
+	algos, err := testClient.ShowAlgos(ctx, nil)
 	if err != nil {
 		t.Fatalf("ShowAlgos failed: %v", err)
 	}
@@ -781,7 +796,7 @@ func TestConvenience_ShowNodeProperty(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "shownprop")
 	defer dropTestGraph(graphName)
 
-	props, err := testClient.ShowNodeProperty(ctx,"Person")
+	props, err := testClient.ShowNodeProperty(ctx, "Person", nil)
 	if err != nil {
 		t.Fatalf("ShowNodeProperty failed: %v", err)
 	}
@@ -803,7 +818,7 @@ func TestConvenience_ShowEdgeProperty(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "showeprop")
 	defer dropTestGraph(graphName)
 
-	props, err := testClient.ShowEdgeProperty(ctx,"KNOWS")
+	props, err := testClient.ShowEdgeProperty(ctx, "KNOWS", nil)
 	if err != nil {
 		t.Fatalf("ShowEdgeProperty failed: %v", err)
 	}
@@ -826,7 +841,7 @@ func TestConvenience_ShowProperty_Dispatch(t *testing.T) {
 	defer dropTestGraph(graphName)
 
 	// Node dispatch
-	nodeProps, err := testClient.ShowProperty(ctx,types.DBTypeNode, "Person")
+	nodeProps, err := testClient.ShowProperty(ctx, types.DBTypeNode, "Person", nil)
 	if err != nil {
 		t.Fatalf("ShowProperty(Node) failed: %v", err)
 	}
@@ -835,7 +850,7 @@ func TestConvenience_ShowProperty_Dispatch(t *testing.T) {
 	}
 
 	// Edge dispatch
-	edgeProps, err := testClient.ShowProperty(ctx,types.DBTypeEdge, "KNOWS")
+	edgeProps, err := testClient.ShowProperty(ctx, types.DBTypeEdge, "KNOWS", nil)
 	if err != nil {
 		t.Fatalf("ShowProperty(Edge) failed: %v", err)
 	}
@@ -854,7 +869,7 @@ func TestConvenience_ShowNodeProperty_NonexistentLabel(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "propnolab")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.ShowNodeProperty(ctx,"NoSuchLabel")
+	_, err := testClient.ShowNodeProperty(ctx, "NoSuchLabel", nil)
 	if err == nil {
 		t.Error("expected error for nonexistent label, got nil")
 	} else {
@@ -872,7 +887,7 @@ func TestConvenience_GetNodeProperty_Existing(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "getnprop")
 	defer dropTestGraph(graphName)
 
-	prop, err := testClient.GetNodeProperty(ctx,"Person", "name")
+	prop, err := testClient.GetNodeProperty(ctx, "Person", "name", nil)
 	if err != nil {
 		t.Fatalf("GetNodeProperty failed: %v", err)
 	}
@@ -895,7 +910,7 @@ func TestConvenience_GetNodeProperty_Nonexistent(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "getnpropne")
 	defer dropTestGraph(graphName)
 
-	prop, err := testClient.GetNodeProperty(ctx,"Person", "nosuchprop")
+	prop, err := testClient.GetNodeProperty(ctx, "Person", "nosuchprop", nil)
 	if err != nil {
 		t.Fatalf("GetNodeProperty (nonexistent) failed: %v", err)
 	}
@@ -914,7 +929,7 @@ func TestConvenience_GetEdgeProperty_Existing(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "geteprop")
 	defer dropTestGraph(graphName)
 
-	prop, err := testClient.GetEdgeProperty(ctx,"KNOWS", "since")
+	prop, err := testClient.GetEdgeProperty(ctx, "KNOWS", "since", nil)
 	if err != nil {
 		t.Fatalf("GetEdgeProperty failed: %v", err)
 	}
@@ -936,7 +951,7 @@ func TestConvenience_GetEdgeProperty_Nonexistent(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "getepropne")
 	defer dropTestGraph(graphName)
 
-	prop, err := testClient.GetEdgeProperty(ctx,"KNOWS", "nosuchprop")
+	prop, err := testClient.GetEdgeProperty(ctx, "KNOWS", "nosuchprop", nil)
 	if err != nil {
 		t.Fatalf("GetEdgeProperty (nonexistent) failed: %v", err)
 	}
@@ -956,7 +971,7 @@ func TestConvenience_GetProperty_Dispatch(t *testing.T) {
 	defer dropTestGraph(graphName)
 
 	// Node property
-	prop, err := testClient.GetProperty(ctx,types.DBTypeNode, "Person", "age")
+	prop, err := testClient.GetProperty(ctx, types.DBTypeNode, "Person", "age", nil)
 	if err != nil {
 		t.Fatalf("GetProperty(Node) failed: %v", err)
 	}
@@ -965,7 +980,7 @@ func TestConvenience_GetProperty_Dispatch(t *testing.T) {
 	}
 
 	// Edge property
-	prop, err = testClient.GetProperty(ctx,types.DBTypeEdge, "KNOWS", "since")
+	prop, err = testClient.GetProperty(ctx, types.DBTypeEdge, "KNOWS", "since", nil)
 	if err != nil {
 		t.Fatalf("GetProperty(Edge) failed: %v", err)
 	}
@@ -984,15 +999,15 @@ func TestConvenience_CreateNodeProperty(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "crnprop")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateNodeProperty(ctx,"Person", []types.PropertyDef{
+	_, err := testClient.CreateNodeProperty(ctx, "Person", []types.PropertyDef{
 		{Name: "email", Type: types.PropertyTypeString},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateNodeProperty failed: %v", err)
 	}
 
 	// Verify
-	prop, err := testClient.GetNodeProperty(ctx,"Person", "email")
+	prop, err := testClient.GetNodeProperty(ctx, "Person", "email", nil)
 	if err != nil {
 		t.Fatalf("GetNodeProperty failed: %v", err)
 	}
@@ -1012,15 +1027,15 @@ func TestConvenience_CreateEdgeProperty(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "creprop")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateEdgeProperty(ctx,"KNOWS", []types.PropertyDef{
+	_, err := testClient.CreateEdgeProperty(ctx, "KNOWS", []types.PropertyDef{
 		{Name: "strength", Type: types.PropertyTypeDouble},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateEdgeProperty failed: %v", err)
 	}
 
 	// Verify
-	prop, err := testClient.GetEdgeProperty(ctx,"KNOWS", "strength")
+	prop, err := testClient.GetEdgeProperty(ctx, "KNOWS", "strength", nil)
 	if err != nil {
 		t.Fatalf("GetEdgeProperty failed: %v", err)
 	}
@@ -1041,17 +1056,17 @@ func TestConvenience_CreateProperty_Dispatch(t *testing.T) {
 	defer dropTestGraph(graphName)
 
 	// Node
-	_, err := testClient.CreateProperty(ctx,types.DBTypeNode, "Person", []types.PropertyDef{
+	_, err := testClient.CreateProperty(ctx, types.DBTypeNode, "Person", []types.PropertyDef{
 		{Name: "phone", Type: types.PropertyTypeString},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateProperty(Node) failed: %v", err)
 	}
 
 	// Edge
-	_, err = testClient.CreateProperty(ctx,types.DBTypeEdge, "KNOWS", []types.PropertyDef{
+	_, err = testClient.CreateProperty(ctx, types.DBTypeEdge, "KNOWS", []types.PropertyDef{
 		{Name: "score", Type: types.PropertyTypeFloat},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateProperty(Edge) failed: %v", err)
 	}
@@ -1067,13 +1082,13 @@ func TestConvenience_DropNodeProperty(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "drpnprop")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.DropNodeProperty(ctx,"Person", "age")
+	_, err := testClient.DropNodeProperty(ctx, "Person", nil, "age")
 	if err != nil {
 		t.Fatalf("DropNodeProperty failed: %v", err)
 	}
 
 	// Verify
-	prop, err := testClient.GetNodeProperty(ctx,"Person", "age")
+	prop, err := testClient.GetNodeProperty(ctx, "Person", "age", nil)
 	if err != nil {
 		t.Fatalf("GetNodeProperty after drop failed: %v", err)
 	}
@@ -1092,13 +1107,13 @@ func TestConvenience_DropEdgeProperty(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "drpeprop")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.DropEdgeProperty(ctx,"KNOWS", "since")
+	_, err := testClient.DropEdgeProperty(ctx, "KNOWS", nil, "since")
 	if err != nil {
 		t.Fatalf("DropEdgeProperty failed: %v", err)
 	}
 
 	// Verify
-	prop, err := testClient.GetEdgeProperty(ctx,"KNOWS", "since")
+	prop, err := testClient.GetEdgeProperty(ctx, "KNOWS", "since", nil)
 	if err != nil {
 		t.Fatalf("GetEdgeProperty after drop failed: %v", err)
 	}
@@ -1118,13 +1133,13 @@ func TestConvenience_DropProperty_Dispatch(t *testing.T) {
 	defer dropTestGraph(graphName)
 
 	// Drop node property via dispatch
-	_, err := testClient.DropProperty(ctx,types.DBTypeNode, "Person", "age")
+	_, err := testClient.DropProperty(ctx, types.DBTypeNode, "Person", nil, "age")
 	if err != nil {
 		t.Fatalf("DropProperty(Node) failed: %v", err)
 	}
 
 	// Drop edge property via dispatch
-	_, err = testClient.DropProperty(ctx,types.DBTypeEdge, "KNOWS", "since")
+	_, err = testClient.DropProperty(ctx, types.DBTypeEdge, "KNOWS", nil, "since")
 	if err != nil {
 		t.Fatalf("DropProperty(Edge) failed: %v", err)
 	}
@@ -1140,9 +1155,9 @@ func TestConvenience_CreatePropertyIfNotExist_New(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "propifnot")
 	defer dropTestGraph(graphName)
 
-	created, err := testClient.CreatePropertyIfNotExist(ctx,types.DBTypeNode, "Person", []types.PropertyDef{
+	created, err := testClient.CreatePropertyIfNotExist(ctx, types.DBTypeNode, "Person", []types.PropertyDef{
 		{Name: "address", Type: types.PropertyTypeString},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreatePropertyIfNotExist (new) failed: %v", err)
 	}
@@ -1151,7 +1166,7 @@ func TestConvenience_CreatePropertyIfNotExist_New(t *testing.T) {
 	}
 
 	// Verify
-	prop, err := testClient.GetNodeProperty(ctx,"Person", "address")
+	prop, err := testClient.GetNodeProperty(ctx, "Person", "address", nil)
 	if err != nil {
 		t.Fatalf("GetNodeProperty failed: %v", err)
 	}
@@ -1171,9 +1186,9 @@ func TestConvenience_CreatePropertyIfNotExist_Existing(t *testing.T) {
 	defer dropTestGraph(graphName)
 
 	// 'name' already exists
-	created, err := testClient.CreatePropertyIfNotExist(ctx,types.DBTypeNode, "Person", []types.PropertyDef{
+	created, err := testClient.CreatePropertyIfNotExist(ctx, types.DBTypeNode, "Person", []types.PropertyDef{
 		{Name: "name", Type: types.PropertyTypeString},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreatePropertyIfNotExist (existing) failed: %v", err)
 	}
@@ -1196,7 +1211,7 @@ func TestConvenience_CreateNotNullConstraint(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "notnull")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateNotNullConstraint(ctx,types.DBTypeNode, "Person", "name")
+	_, err := testClient.CreateNotNullConstraint(ctx, types.DBTypeNode, "Person", "name", nil)
 	if err != nil {
 		t.Fatalf("CreateNotNullConstraint failed: %v", err)
 	}
@@ -1213,7 +1228,7 @@ func TestConvenience_CreateUniqueConstraint(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "unique")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateUniqueConstraint(ctx,types.DBTypeNode, "Person", "name")
+	_, err := testClient.CreateUniqueConstraint(ctx, types.DBTypeNode, "Person", nil, "name")
 	if err != nil {
 		t.Fatalf("CreateUniqueConstraint failed: %v", err)
 	}
@@ -1231,12 +1246,12 @@ func TestConvenience_DropNotNullConstraint(t *testing.T) {
 	defer dropTestGraph(graphName)
 
 	// Add then drop
-	_, err := testClient.CreateNotNullConstraint(ctx,types.DBTypeNode, "Person", "name")
+	_, err := testClient.CreateNotNullConstraint(ctx, types.DBTypeNode, "Person", "name", nil)
 	if err != nil {
 		t.Fatalf("CreateNotNullConstraint failed: %v", err)
 	}
 
-	_, err = testClient.DropNotNullConstraint(ctx,types.DBTypeNode, "Person", "name")
+	_, err = testClient.DropNotNullConstraint(ctx, types.DBTypeNode, "Person", "name", nil)
 	if err != nil {
 		t.Fatalf("DropNotNullConstraint failed: %v", err)
 	}
@@ -1254,12 +1269,12 @@ func TestConvenience_DropUniqueConstraint(t *testing.T) {
 	defer dropTestGraph(graphName)
 
 	// Add then drop
-	_, err := testClient.CreateUniqueConstraint(ctx,types.DBTypeNode, "Person", "name")
+	_, err := testClient.CreateUniqueConstraint(ctx, types.DBTypeNode, "Person", nil, "name")
 	if err != nil {
 		t.Fatalf("CreateUniqueConstraint failed: %v", err)
 	}
 
-	_, err = testClient.DropUniqueConstraint(ctx,types.DBTypeNode, "Person", "name")
+	_, err = testClient.DropUniqueConstraint(ctx, types.DBTypeNode, "Person", nil, "name")
 	if err != nil {
 		t.Fatalf("DropUniqueConstraint failed: %v", err)
 	}
@@ -1280,9 +1295,9 @@ func TestConvenience_CreateNodeIndex(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "crnidx")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateNodeIndex(ctx,"idx_person_name", "Person", []types.IndexProperty{
+	_, err := testClient.CreateNodeIndex(ctx, "idx_person_name", "Person", []types.IndexProperty{
 		{Name: "name"},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateNodeIndex failed: %v", err)
 	}
@@ -1299,9 +1314,9 @@ func TestConvenience_CreateEdgeIndex(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "creidx")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateEdgeIndex(ctx,"idx_knows_since", "KNOWS", []types.IndexProperty{
+	_, err := testClient.CreateEdgeIndex(ctx, "idx_knows_since", "KNOWS", []types.IndexProperty{
 		{Name: "since"},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateEdgeIndex failed: %v", err)
 	}
@@ -1319,14 +1334,14 @@ func TestConvenience_ShowIndex(t *testing.T) {
 	defer dropTestGraph(graphName)
 
 	// Create an index first
-	_, err := testClient.CreateNodeIndex(ctx,"idx_test", "Person", []types.IndexProperty{
+	_, err := testClient.CreateNodeIndex(ctx, "idx_test", "Person", []types.IndexProperty{
 		{Name: "name"},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateNodeIndex failed: %v", err)
 	}
 
-	indexes, err := testClient.ShowIndex(ctx)
+	indexes, err := testClient.ShowIndex(ctx, nil)
 	if err != nil {
 		t.Fatalf("ShowIndex failed: %v", err)
 	}
@@ -1350,14 +1365,14 @@ func TestConvenience_ShowNodeIndex(t *testing.T) {
 	defer dropTestGraph(graphName)
 
 	// Create node index
-	_, err := testClient.CreateNodeIndex(ctx,"idx_node_test", "Person", []types.IndexProperty{
+	_, err := testClient.CreateNodeIndex(ctx, "idx_node_test", "Person", []types.IndexProperty{
 		{Name: "name"},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateNodeIndex failed: %v", err)
 	}
 
-	indexes, err := testClient.ShowNodeIndex(ctx)
+	indexes, err := testClient.ShowNodeIndex(ctx, nil)
 	if err != nil {
 		t.Fatalf("ShowNodeIndex failed: %v", err)
 	}
@@ -1380,14 +1395,14 @@ func TestConvenience_ShowEdgeIndex(t *testing.T) {
 	defer dropTestGraph(graphName)
 
 	// Create edge index
-	_, err := testClient.CreateEdgeIndex(ctx,"idx_edge_test", "KNOWS", []types.IndexProperty{
+	_, err := testClient.CreateEdgeIndex(ctx, "idx_edge_test", "KNOWS", []types.IndexProperty{
 		{Name: "since"},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateEdgeIndex failed: %v", err)
 	}
 
-	indexes, err := testClient.ShowEdgeIndex(ctx)
+	indexes, err := testClient.ShowEdgeIndex(ctx, nil)
 	if err != nil {
 		t.Fatalf("ShowEdgeIndex failed: %v", err)
 	}
@@ -1410,20 +1425,20 @@ func TestConvenience_DropNodeIndex(t *testing.T) {
 	defer dropTestGraph(graphName)
 
 	// Create then drop
-	_, err := testClient.CreateNodeIndex(ctx,"idx_to_drop", "Person", []types.IndexProperty{
+	_, err := testClient.CreateNodeIndex(ctx, "idx_to_drop", "Person", []types.IndexProperty{
 		{Name: "name"},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateNodeIndex failed: %v", err)
 	}
 
-	_, err = testClient.DropNodeIndex(ctx,"idx_to_drop")
+	_, err = testClient.DropNodeIndex(ctx, "idx_to_drop", nil)
 	if err != nil {
 		t.Fatalf("DropNodeIndex failed: %v", err)
 	}
 
 	// Verify
-	indexes, err := testClient.ShowNodeIndex(ctx)
+	indexes, err := testClient.ShowNodeIndex(ctx, nil)
 	if err != nil {
 		t.Fatalf("ShowNodeIndex after drop failed: %v", err)
 	}
@@ -1445,20 +1460,20 @@ func TestConvenience_DropEdgeIndex(t *testing.T) {
 	defer dropTestGraph(graphName)
 
 	// Create then drop
-	_, err := testClient.CreateEdgeIndex(ctx,"idx_edge_drop", "KNOWS", []types.IndexProperty{
+	_, err := testClient.CreateEdgeIndex(ctx, "idx_edge_drop", "KNOWS", []types.IndexProperty{
 		{Name: "since"},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateEdgeIndex failed: %v", err)
 	}
 
-	_, err = testClient.DropEdgeIndex(ctx,"idx_edge_drop")
+	_, err = testClient.DropEdgeIndex(ctx, "idx_edge_drop", nil)
 	if err != nil {
 		t.Fatalf("DropEdgeIndex failed: %v", err)
 	}
 
 	// Verify
-	indexes, err := testClient.ShowEdgeIndex(ctx)
+	indexes, err := testClient.ShowEdgeIndex(ctx, nil)
 	if err != nil {
 		t.Fatalf("ShowEdgeIndex after drop failed: %v", err)
 	}
@@ -1483,7 +1498,7 @@ func TestConvenience_CreateNodeFulltext(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "crnft")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateNodeFulltext(ctx,"ft_person_name", "Person", []string{"name"})
+	_, err := testClient.CreateNodeFulltext(ctx, "ft_person_name", "Person", []string{"name"}, nil)
 	if err != nil {
 		t.Fatalf("CreateNodeFulltext failed: %v", err)
 	}
@@ -1501,14 +1516,14 @@ func TestConvenience_CreateEdgeFulltext(t *testing.T) {
 	defer dropTestGraph(graphName)
 
 	// Edge fulltext needs a STRING property, add one
-	_, err := testClient.CreateEdgeProperty(ctx,"KNOWS", []types.PropertyDef{
+	_, err := testClient.CreateEdgeProperty(ctx, "KNOWS", []types.PropertyDef{
 		{Name: "description", Type: types.PropertyTypeString},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateEdgeProperty for fulltext failed: %v", err)
 	}
 
-	_, err = testClient.CreateEdgeFulltext(ctx,"ft_knows_desc", "KNOWS", []string{"description"})
+	_, err = testClient.CreateEdgeFulltext(ctx, "ft_knows_desc", "KNOWS", []string{"description"}, nil)
 	if err != nil {
 		t.Fatalf("CreateEdgeFulltext failed: %v", err)
 	}
@@ -1526,12 +1541,12 @@ func TestConvenience_ShowFulltext(t *testing.T) {
 	defer dropTestGraph(graphName)
 
 	// Create fulltext first
-	_, err := testClient.CreateNodeFulltext(ctx,"ft_show_test", "Person", []string{"name"})
+	_, err := testClient.CreateNodeFulltext(ctx, "ft_show_test", "Person", []string{"name"}, nil)
 	if err != nil {
 		t.Fatalf("CreateNodeFulltext failed: %v", err)
 	}
 
-	fts, err := testClient.ShowFulltext(ctx)
+	fts, err := testClient.ShowFulltext(ctx, nil)
 	if err != nil {
 		t.Fatalf("ShowFulltext failed: %v", err)
 	}
@@ -1554,12 +1569,12 @@ func TestConvenience_ShowNodeFulltext(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "shownft")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateNodeFulltext(ctx,"ft_node_show", "Person", []string{"name"})
+	_, err := testClient.CreateNodeFulltext(ctx, "ft_node_show", "Person", []string{"name"}, nil)
 	if err != nil {
 		t.Fatalf("CreateNodeFulltext failed: %v", err)
 	}
 
-	fts, err := testClient.ShowNodeFulltext(ctx)
+	fts, err := testClient.ShowNodeFulltext(ctx, nil)
 	if err != nil {
 		t.Fatalf("ShowNodeFulltext failed: %v", err)
 	}
@@ -1579,19 +1594,19 @@ func TestConvenience_ShowEdgeFulltext(t *testing.T) {
 	defer dropTestGraph(graphName)
 
 	// Create edge fulltext
-	_, err := testClient.CreateEdgeProperty(ctx,"KNOWS", []types.PropertyDef{
+	_, err := testClient.CreateEdgeProperty(ctx, "KNOWS", []types.PropertyDef{
 		{Name: "note", Type: types.PropertyTypeString},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateEdgeProperty failed: %v", err)
 	}
 
-	_, err = testClient.CreateEdgeFulltext(ctx,"ft_edge_show", "KNOWS", []string{"note"})
+	_, err = testClient.CreateEdgeFulltext(ctx, "ft_edge_show", "KNOWS", []string{"note"}, nil)
 	if err != nil {
 		t.Fatalf("CreateEdgeFulltext failed: %v", err)
 	}
 
-	fts, err := testClient.ShowEdgeFulltext(ctx)
+	fts, err := testClient.ShowEdgeFulltext(ctx, nil)
 	if err != nil {
 		t.Fatalf("ShowEdgeFulltext failed: %v", err)
 	}
@@ -1610,18 +1625,18 @@ func TestConvenience_DropNodeFulltext(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "drpnft")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateNodeFulltext(ctx,"ft_to_drop", "Person", []string{"name"})
+	_, err := testClient.CreateNodeFulltext(ctx, "ft_to_drop", "Person", []string{"name"}, nil)
 	if err != nil {
 		t.Fatalf("CreateNodeFulltext failed: %v", err)
 	}
 
-	_, err = testClient.DropNodeFulltext(ctx,"ft_to_drop")
+	_, err = testClient.DropNodeFulltext(ctx, "ft_to_drop", nil)
 	if err != nil {
 		t.Fatalf("DropNodeFulltext failed: %v", err)
 	}
 
 	// Verify
-	fts, err := testClient.ShowNodeFulltext(ctx)
+	fts, err := testClient.ShowNodeFulltext(ctx, nil)
 	if err != nil {
 		t.Fatalf("ShowNodeFulltext after drop failed: %v", err)
 	}
@@ -1642,25 +1657,25 @@ func TestConvenience_DropEdgeFulltext(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "drpeft")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateEdgeProperty(ctx,"KNOWS", []types.PropertyDef{
+	_, err := testClient.CreateEdgeProperty(ctx, "KNOWS", []types.PropertyDef{
 		{Name: "memo", Type: types.PropertyTypeString},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateEdgeProperty failed: %v", err)
 	}
 
-	_, err = testClient.CreateEdgeFulltext(ctx,"ft_edge_drop", "KNOWS", []string{"memo"})
+	_, err = testClient.CreateEdgeFulltext(ctx, "ft_edge_drop", "KNOWS", []string{"memo"}, nil)
 	if err != nil {
 		t.Fatalf("CreateEdgeFulltext failed: %v", err)
 	}
 
-	_, err = testClient.DropEdgeFulltext(ctx,"ft_edge_drop")
+	_, err = testClient.DropEdgeFulltext(ctx, "ft_edge_drop", nil)
 	if err != nil {
 		t.Fatalf("DropEdgeFulltext failed: %v", err)
 	}
 
 	// Verify
-	fts, err := testClient.ShowEdgeFulltext(ctx)
+	fts, err := testClient.ShowEdgeFulltext(ctx, nil)
 	if err != nil {
 		t.Fatalf("ShowEdgeFulltext after drop failed: %v", err)
 	}
@@ -1682,7 +1697,7 @@ func TestConvenience_ShowTasks(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	tasks, err := testClient.ShowTasks(ctx)
+	tasks, err := testClient.ShowTasks(ctx, nil)
 	if err != nil {
 		t.Fatalf("ShowTasks failed: %v", err)
 	}
@@ -1699,7 +1714,7 @@ func TestConvenience_DeleteTask_Nonexistent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	_, err := testClient.DeleteTask(ctx,"nonexistent_task_id_999")
+	_, err := testClient.DeleteTask(ctx, "nonexistent_task_id_999", nil)
 	if err == nil {
 		t.Log("DeleteTask with nonexistent ID returned no error (server may silently succeed)")
 	} else {
@@ -1714,7 +1729,7 @@ func TestConvenience_StopTask_Nonexistent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	_, err := testClient.StopTask(ctx,"nonexistent_task_id_999")
+	_, err := testClient.StopTask(ctx, "nonexistent_task_id_999", nil)
 	if err == nil {
 		t.Log("StopTask with nonexistent ID returned no error (server may silently succeed)")
 	} else {
@@ -1736,7 +1751,7 @@ func TestConvenience_InsertNodes(t *testing.T) {
 	graphName := "test_conv_insgql_" + time.Now().Format("150405")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateOpenGraph(ctx, graphName)
+	_, err := testClient.CreateOpenGraph(ctx, graphName, nil)
 	if err != nil {
 		t.Fatalf("CreateOpenGraph failed: %v", err)
 	}
@@ -1746,7 +1761,7 @@ func TestConvenience_InsertNodes(t *testing.T) {
 		{Labels: []string{"Person"}, Properties: map[string]interface{}{"name": "Bob", "age": int64(25)}},
 	}
 
-	resp, err := testClient.InsertNodes(ctx, nodes, types.InsertTypeNormal)
+	resp, err := testClient.InsertNodes(ctx, nodes, nil)
 	if err != nil {
 		t.Fatalf("InsertNodes failed: %v", err)
 	}
@@ -1766,7 +1781,7 @@ func TestConvenience_InsertNodes_MissingLabel(t *testing.T) {
 	graphName := "test_conv_insnolbl_" + time.Now().Format("150405")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateOpenGraph(ctx, graphName)
+	_, err := testClient.CreateOpenGraph(ctx, graphName, nil)
 	if err != nil {
 		t.Fatalf("CreateOpenGraph failed: %v", err)
 	}
@@ -1776,7 +1791,7 @@ func TestConvenience_InsertNodes_MissingLabel(t *testing.T) {
 		{Labels: nil, Properties: map[string]interface{}{"name": "NoLabel"}},
 	}
 
-	_, err = testClient.InsertNodes(ctx, nodes, types.InsertTypeNormal)
+	_, err = testClient.InsertNodes(ctx, nodes, nil)
 	if err == nil {
 		t.Error("expected error for node with no labels, got nil")
 	} else {
@@ -1791,7 +1806,7 @@ func TestConvenience_InsertNodes_EmptyList(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	resp, err := testClient.InsertNodes(ctx, nil, types.InsertTypeNormal)
+	resp, err := testClient.InsertNodes(ctx, nil, nil)
 	if err != nil {
 		t.Fatalf("InsertNodes with empty list failed: %v", err)
 	}
@@ -1810,7 +1825,7 @@ func TestConvenience_InsertEdges(t *testing.T) {
 	graphName := "test_conv_insedge_" + time.Now().Format("150405")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateOpenGraph(ctx, graphName)
+	_, err := testClient.CreateOpenGraph(ctx, graphName, nil)
 	if err != nil {
 		t.Fatalf("CreateOpenGraph failed: %v", err)
 	}
@@ -1820,7 +1835,7 @@ func TestConvenience_InsertEdges(t *testing.T) {
 		{Labels: []string{"Person"}, Properties: map[string]interface{}{"name": "Alice"}},
 		{Labels: []string{"Person"}, Properties: map[string]interface{}{"name": "Bob"}},
 	}
-	_, err = testClient.InsertNodes(ctx, nodes, types.InsertTypeNormal)
+	_, err = testClient.InsertNodes(ctx, nodes, nil)
 	if err != nil {
 		t.Fatalf("InsertNodes failed: %v", err)
 	}
@@ -1858,7 +1873,7 @@ func TestConvenience_InsertEdges(t *testing.T) {
 		},
 	}
 
-	edgeResp, err := testClient.InsertEdges(ctx, edges, types.InsertTypeNormal)
+	edgeResp, err := testClient.InsertEdges(ctx, edges, nil)
 	if err != nil {
 		t.Fatalf("InsertEdges failed: %v", err)
 	}
@@ -1875,7 +1890,7 @@ func TestConvenience_InsertEdges_EmptyList(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	resp, err := testClient.InsertEdges(ctx, nil, types.InsertTypeNormal)
+	resp, err := testClient.InsertEdges(ctx, nil, nil)
 	if err != nil {
 		t.Fatalf("InsertEdges with empty list failed: %v", err)
 	}
@@ -1894,7 +1909,7 @@ func TestConvenience_InsertNodesBatchAuto(t *testing.T) {
 	graphName := "test_conv_batch_" + time.Now().Format("150405")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateOpenGraph(ctx, graphName)
+	_, err := testClient.CreateOpenGraph(ctx, graphName, nil)
 	if err != nil {
 		t.Fatalf("CreateOpenGraph failed: %v", err)
 	}
@@ -1940,7 +1955,7 @@ func TestConvenience_InsertEdgesBatchAuto(t *testing.T) {
 	graphName := "test_conv_batchedge_" + time.Now().Format("150405")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateOpenGraph(ctx, graphName)
+	_, err := testClient.CreateOpenGraph(ctx, graphName, nil)
 	if err != nil {
 		t.Fatalf("CreateOpenGraph failed: %v", err)
 	}
@@ -2115,15 +2130,15 @@ func TestConvenience_CreateNodeIndex_WithPrefixLength(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "idxpfx")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateNodeIndex(ctx,"idx_name_prefix", "Person", []types.IndexProperty{
+	_, err := testClient.CreateNodeIndex(ctx, "idx_name_prefix", "Person", []types.IndexProperty{
 		{Name: "name", PrefixLength: 10},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("CreateNodeIndex with prefix length failed: %v", err)
 	}
 
 	// Verify
-	indexes, err := testClient.ShowNodeIndex(ctx)
+	indexes, err := testClient.ShowNodeIndex(ctx, nil)
 	if err != nil {
 		t.Fatalf("ShowNodeIndex failed: %v", err)
 	}
@@ -2150,7 +2165,7 @@ func TestConvenience_CreateOpenGraph_EmptyName(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	_, err := testClient.CreateOpenGraph(ctx, "")
+	_, err := testClient.CreateOpenGraph(ctx, "", nil)
 	if err == nil {
 		t.Error("expected error for empty graph name, got nil")
 	} else {
@@ -2165,7 +2180,7 @@ func TestConvenience_Truncate_NonexistentGraph(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	_, err := testClient.Truncate(ctx, "nonexistent_graph_xyz_999")
+	_, err := testClient.Truncate(ctx, "nonexistent_graph_xyz_999", nil)
 	if err == nil {
 		t.Error("expected error for truncating nonexistent graph, got nil")
 	} else {
@@ -2180,7 +2195,7 @@ func TestConvenience_AlterGraph_NonexistentGraph(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	_, err := testClient.AlterGraph(ctx, "nonexistent_graph_xyz_999", "new_name")
+	_, err := testClient.AlterGraph(ctx, "nonexistent_graph_xyz_999", "new_name", nil)
 	if err == nil {
 		t.Error("expected error for renaming nonexistent graph, got nil")
 	} else {
@@ -2197,7 +2212,7 @@ func TestConvenience_ShowLabels_NonexistentGraph(t *testing.T) {
 
 	// Use a nonexistent graph then try ShowLabels
 	_ = testClient.UseGraph(ctx, "nonexistent_graph_xyz_999")
-	_, err := testClient.ShowLabels(ctx)
+	_, err := testClient.ShowLabels(ctx, nil)
 	if err == nil {
 		t.Error("expected error for ShowLabels on nonexistent graph, got nil")
 	} else {
@@ -2216,7 +2231,7 @@ func TestConvenience_CreateNodeLabel_NonexistentGraph(t *testing.T) {
 
 	// CreateNodeLabel now uses the current graph internally.
 	// Without UseGraph, the current graph may be empty, which should cause an error.
-	_, err := testClient.CreateNodeLabel(ctx, "Foo", nil)
+	_, err := testClient.CreateNodeLabel(ctx, "Foo", nil, nil)
 	if err == nil {
 		t.Log("CreateNodeLabel without UseGraph did not error (may use default graph)")
 	} else {
@@ -2234,7 +2249,7 @@ func TestConvenience_DropNodeLabel_Nonexistent(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "drpnone")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.DropNodeLabel(ctx,"NoSuchLabel")
+	_, err := testClient.DropNodeLabel(ctx, "NoSuchLabel", nil)
 	if err == nil {
 		t.Error("expected error for dropping nonexistent label, got nil")
 	} else {
@@ -2252,7 +2267,7 @@ func TestConvenience_DropNodeProperty_Nonexistent(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "drppropne")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.DropNodeProperty(ctx,"Person", "no_such_property")
+	_, err := testClient.DropNodeProperty(ctx, "Person", nil, "no_such_property")
 	if err == nil {
 		t.Error("expected error for dropping nonexistent property, got nil")
 	} else {
@@ -2270,7 +2285,7 @@ func TestConvenience_DropNodeIndex_Nonexistent(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "drpidxne")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.DropNodeIndex(ctx,"no_such_index")
+	_, err := testClient.DropNodeIndex(ctx, "no_such_index", nil)
 	if err == nil {
 		t.Error("expected error for dropping nonexistent index, got nil")
 	} else {
@@ -2288,7 +2303,7 @@ func TestConvenience_DropNodeFulltext_Nonexistent(t *testing.T) {
 	graphName := createClosedGraphWithLabels(t, "drpftne")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.DropNodeFulltext(ctx,"no_such_fulltext")
+	_, err := testClient.DropNodeFulltext(ctx, "no_such_fulltext", nil)
 	if err == nil {
 		t.Error("expected error for dropping nonexistent fulltext, got nil")
 	} else {
@@ -2306,12 +2321,12 @@ func TestConvenience_ShowIndex_EmptyGraph(t *testing.T) {
 	graphName := "test_conv_emptyidx_" + time.Now().Format("150405")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateClosedGraph(ctx, graphName)
+	_, err := testClient.CreateClosedGraph(ctx, graphName, nil)
 	if err != nil {
 		t.Fatalf("CreateClosedGraph failed: %v", err)
 	}
 
-	indexes, err := testClient.ShowIndex(ctx)
+	indexes, err := testClient.ShowIndex(ctx, nil)
 	if err != nil {
 		t.Fatalf("ShowIndex on empty graph failed: %v", err)
 	}
@@ -2330,12 +2345,12 @@ func TestConvenience_ShowFulltext_EmptyGraph(t *testing.T) {
 	graphName := "test_conv_emptyft_" + time.Now().Format("150405")
 	defer dropTestGraph(graphName)
 
-	_, err := testClient.CreateClosedGraph(ctx, graphName)
+	_, err := testClient.CreateClosedGraph(ctx, graphName, nil)
 	if err != nil {
 		t.Fatalf("CreateClosedGraph failed: %v", err)
 	}
 
-	fts, err := testClient.ShowFulltext(ctx)
+	fts, err := testClient.ShowFulltext(ctx, nil)
 	if err != nil {
 		t.Fatalf("ShowFulltext on empty graph failed: %v", err)
 	}

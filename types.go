@@ -123,6 +123,15 @@ type Attr = types.Attr
 
 // Re-export config types
 type QueryConfig = types.QueryConfig
+type InsertConfig = types.InsertConfig
 type InsertNodesConfig = types.InsertNodesConfig
 type InsertEdgesConfig = types.InsertEdgesConfig
 type HealthWatcher = types.HealthWatcher
+
+// Re-export InsertType constants used by InsertConfig.
+type InsertType = types.InsertType
+
+const (
+	InsertTypeNormal    = types.InsertTypeNormal
+	InsertTypeOverwrite = types.InsertTypeOverwrite
+)

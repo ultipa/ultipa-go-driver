@@ -17,6 +17,18 @@ type QueryConfig struct {
 	MaxPathResults int64
 }
 
+// InsertConfig extends QueryConfig with options for convenience insert methods
+// (InsertNodes / InsertEdges). It mirrors the Python SDK's InsertConfig which
+// inherits from QueryConfig and adds insert_type.
+//
+// Since Go does not have real inheritance, QueryConfig is embedded and
+// InsertType is the additional field. Callers may pass nil; in that case the
+// defaults (graph from session, InsertTypeNormal) are used.
+type InsertConfig struct {
+	QueryConfig
+	InsertType InsertType
+}
+
 // InsertNodesConfig represents configuration for inserting nodes.
 type InsertNodesConfig struct {
 	Overwrite           bool   // Skip existence check and overwrite if node ID already exists

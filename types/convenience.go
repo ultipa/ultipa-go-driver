@@ -11,9 +11,13 @@ const (
 )
 
 // LabelInfo represents a label from SHOW LABELS.
+//
+// GQL supports multi-label nodes (e.g. (n:Person:Employee)), so the server
+// returns labels as a list even when there is only one. Labels holds the raw
+// list as returned by the server; single-label groups are length-1.
 type LabelInfo struct {
-	Name string // label name
-	Type string // "NODE" or "EDGE"
+	Labels []string // label names (multi-label aware)
+	Type   string   // "NODE" or "EDGE"
 }
 
 // NodeTypeInfo represents a node type from SHOW NODE TYPES.

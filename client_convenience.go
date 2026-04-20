@@ -27,19 +27,39 @@ func quoteLabels(names []string) string {
 	return strings.Join(quoted, ", ")
 }
 
+// resolveTargetGraph returns the graph to target for a convenience method.
+// If config is non-nil and config.GraphName is set, it returns that; otherwise
+// it falls back to the session's current default graph.
+func (c *Client) resolveTargetGraph(config *QueryConfig) string {
+	if config != nil && config.GraphName != "" {
+		return config.GraphName
+	}
+	return c.sessions.GetDefaultGraph()
+}
+
+// labelsContain reports whether s is present in labels.
+func labelsContain(labels []string, s string) bool {
+	for _, l := range labels {
+		if l == s {
+			return true
+		}
+	}
+	return false
+}
+
 // =============================================================================
 // Convenience API — Graph Operations (6 methods)
 // =============================================================================
 
 // CreateOpenGraph creates a new open (schema-less) graph.
-func (c *Client) CreateOpenGraph(ctx context.Context, name string) (*Response, error) {
-	return c.Gql(ctx, fmt.Sprintf("CREATE GRAPH %s {}", name), nil)
+func (c *Client) CreateOpenGraph(ctx context.Context, name string, config *QueryConfig) (*Response, error) {
+	return c.Gql(ctx, fmt.Sprintf("CREATE GRAPH %s {}", name), config)
 }
 
 // CreateClosedGraph creates a new empty closed (schema-enforced) graph.
 // Use CreateNodeLabel/CreateEdgeLabel to add labels after creation.
-func (c *Client) CreateClosedGraph(ctx context.Context, name string) (*Response, error) {
-	return c.Gql(ctx, fmt.Sprintf("CREATE GRAPH %s {}", name), nil)
+func (c *Client) CreateClosedGraph(ctx context.Context, name string, config *QueryConfig) (*Response, error) {
+	return c.Gql(ctx, fmt.Sprintf("CREATE GRAPH %s {}", name), config)
 }
 
 // CreateGraphIfNotExist creates a graph if it does not already exist.
@@ -71,15 +91,15 @@ func (c *Client) HasGraph(ctx context.Context, name string) (bool, error) {
 }
 
 // AlterGraph renames a graph.
-func (c *Client) AlterGraph(ctx context.Context, graphName string, newName string) (*Response, error) {
+func (c *Client) AlterGraph(ctx context.Context, graphName string, newName string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("ALTER GRAPH %s RENAME TO %s", graphName, newName)
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // Truncate removes all data from a graph while keeping its structure.
-func (c *Client) Truncate(ctx context.Context, graphName string) (*Response, error) {
+func (c *Client) Truncate(ctx context.Context, graphName string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("TRUNCATE GRAPH %s", graphName)
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // =============================================================================
@@ -87,39 +107,39 @@ func (c *Client) Truncate(ctx context.Context, graphName string) (*Response, err
 // =============================================================================
 
 // ShowLabels returns all labels (node and edge) in the current graph.
-func (c *Client) ShowLabels(ctx context.Context) ([]types.LabelInfo, error) {
+func (c *Client) ShowLabels(ctx context.Context, config *QueryConfig) ([]types.LabelInfo, error) {
 	gql := "SHOW LABELS"
-	resp, err := c.Gql(ctx, gql, nil)
+	resp, err := c.Gql(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
-	return parseLabelInfoRows(resp)
+	return parseLabelInfoRows(resp, "")
 }
 
 // ShowNodeLabels returns all node labels in the current graph.
-func (c *Client) ShowNodeLabels(ctx context.Context) ([]types.LabelInfo, error) {
+func (c *Client) ShowNodeLabels(ctx context.Context, config *QueryConfig) ([]types.LabelInfo, error) {
 	gql := "SHOW NODE LABELS"
-	resp, err := c.Gql(ctx, gql, nil)
+	resp, err := c.Gql(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
-	return parseLabelInfoRows(resp)
+	return parseLabelInfoRows(resp, "NODE")
 }
 
 // ShowEdgeLabels returns all edge labels in the current graph.
-func (c *Client) ShowEdgeLabels(ctx context.Context) ([]types.LabelInfo, error) {
+func (c *Client) ShowEdgeLabels(ctx context.Context, config *QueryConfig) ([]types.LabelInfo, error) {
 	gql := "SHOW EDGE LABELS"
-	resp, err := c.Gql(ctx, gql, nil)
+	resp, err := c.Gql(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
-	return parseLabelInfoRows(resp)
+	return parseLabelInfoRows(resp, "EDGE")
 }
 
 // ShowNodeTypes returns all node types with their properties.
-func (c *Client) ShowNodeTypes(ctx context.Context) ([]types.NodeTypeInfo, error) {
+func (c *Client) ShowNodeTypes(ctx context.Context, config *QueryConfig) ([]types.NodeTypeInfo, error) {
 	gql := "SHOW NODE TYPES"
-	resp, err := c.Gql(ctx, gql, nil)
+	resp, err := c.Gql(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -127,9 +147,9 @@ func (c *Client) ShowNodeTypes(ctx context.Context) ([]types.NodeTypeInfo, error
 }
 
 // ShowEdgeTypes returns all edge types with their properties.
-func (c *Client) ShowEdgeTypes(ctx context.Context) ([]types.EdgeTypeInfo, error) {
+func (c *Client) ShowEdgeTypes(ctx context.Context, config *QueryConfig) ([]types.EdgeTypeInfo, error) {
 	gql := "SHOW EDGE TYPES"
-	resp, err := c.Gql(ctx, gql, nil)
+	resp, err := c.Gql(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -137,15 +157,17 @@ func (c *Client) ShowEdgeTypes(ctx context.Context) ([]types.EdgeTypeInfo, error
 }
 
 // GetLabel returns a specific label by name from the current graph.
+// The server returns labels as a list (multi-label support), so this checks
+// whether `name` is a member of any row's labels list.
 // Returns nil if not found.
-func (c *Client) GetLabel(ctx context.Context, name string) (*types.LabelInfo, error) {
-	labels, err := c.ShowLabels(ctx)
+func (c *Client) GetLabel(ctx context.Context, name string, config *QueryConfig) (*types.LabelInfo, error) {
+	labels, err := c.ShowLabels(ctx, config)
 	if err != nil {
 		return nil, err
 	}
-	for _, l := range labels {
-		if l.Name == name {
-			return &l, nil
+	for i := range labels {
+		if labelsContain(labels[i].Labels, name) {
+			return &labels[i], nil
 		}
 	}
 	return nil, nil
@@ -153,14 +175,14 @@ func (c *Client) GetLabel(ctx context.Context, name string) (*types.LabelInfo, e
 
 // GetNodeLabel returns a specific node type by name.
 // Returns nil if not found.
-func (c *Client) GetNodeLabel(ctx context.Context, name string) (*types.NodeTypeInfo, error) {
-	nodeTypes, err := c.ShowNodeTypes(ctx)
+func (c *Client) GetNodeLabel(ctx context.Context, name string, config *QueryConfig) (*types.NodeTypeInfo, error) {
+	nodeTypes, err := c.ShowNodeTypes(ctx, config)
 	if err != nil {
 		return nil, err
 	}
-	for _, nt := range nodeTypes {
-		if nt.Name == name {
-			return &nt, nil
+	for i := range nodeTypes {
+		if nodeTypes[i].Name == name {
+			return &nodeTypes[i], nil
 		}
 	}
 	return nil, nil
@@ -168,14 +190,14 @@ func (c *Client) GetNodeLabel(ctx context.Context, name string) (*types.NodeType
 
 // GetEdgeLabel returns a specific edge type by name.
 // Returns nil if not found.
-func (c *Client) GetEdgeLabel(ctx context.Context, name string) (*types.EdgeTypeInfo, error) {
-	edgeTypes, err := c.ShowEdgeTypes(ctx)
+func (c *Client) GetEdgeLabel(ctx context.Context, name string, config *QueryConfig) (*types.EdgeTypeInfo, error) {
+	edgeTypes, err := c.ShowEdgeTypes(ctx, config)
 	if err != nil {
 		return nil, err
 	}
-	for _, et := range edgeTypes {
-		if et.Name == name {
-			return &et, nil
+	for i := range edgeTypes {
+		if edgeTypes[i].Name == name {
+			return &edgeTypes[i], nil
 		}
 	}
 	return nil, nil
@@ -183,59 +205,61 @@ func (c *Client) GetEdgeLabel(ctx context.Context, name string) (*types.EdgeType
 
 // CreateNodeLabel creates a node label in the current graph (closed graph).
 // GQL: ALTER GRAPH g ADD NODE { Name ({p1 T1, p2 T2}) }
-func (c *Client) CreateNodeLabel(ctx context.Context, name string, props []types.PropertyDef) (*Response, error) {
-	currentGraph := c.sessions.GetDefaultGraph()
+// If config.GraphName is set, the label is added to that graph instead of the
+// session's current graph, without modifying session state.
+func (c *Client) CreateNodeLabel(ctx context.Context, name string, props []types.PropertyDef, config *QueryConfig) (*Response, error) {
+	targetGraph := c.resolveTargetGraph(config)
 	propStr := buildPropertyDefString(props)
-	gql := fmt.Sprintf("ALTER GRAPH %s ADD NODE { %s (%s) }", currentGraph, quoteLabel(name), propStr)
-	return c.Gql(ctx, gql, nil)
+	gql := fmt.Sprintf("ALTER GRAPH %s ADD NODE { %s (%s) }", targetGraph, quoteLabel(name), propStr)
+	return c.Gql(ctx, gql, config)
 }
 
 // CreateEdgeLabel creates an edge label in the current graph (closed graph).
 // GQL: ALTER GRAPH g ADD EDGE { Name ()-[{p1 T1}]->() }
-func (c *Client) CreateEdgeLabel(ctx context.Context, name string, props []types.PropertyDef) (*Response, error) {
-	currentGraph := c.sessions.GetDefaultGraph()
+// If config.GraphName is set, the label is added to that graph instead of the
+// session's current graph, without modifying session state.
+func (c *Client) CreateEdgeLabel(ctx context.Context, name string, props []types.PropertyDef, config *QueryConfig) (*Response, error) {
+	targetGraph := c.resolveTargetGraph(config)
 	propStr := buildPropertyDefString(props)
-	gql := fmt.Sprintf("ALTER GRAPH %s ADD EDGE { %s ()-[%s]->() }", currentGraph, quoteLabel(name), propStr)
-	return c.Gql(ctx, gql, nil)
+	gql := fmt.Sprintf("ALTER GRAPH %s ADD EDGE { %s ()-[%s]->() }", targetGraph, quoteLabel(name), propStr)
+	return c.Gql(ctx, gql, config)
 }
 
 // DropNodeLabel drops a node label from the current graph (closed graph).
-func (c *Client) DropNodeLabel(ctx context.Context, name string) (*Response, error) {
-	currentGraph := c.sessions.GetDefaultGraph()
-	gql := fmt.Sprintf("ALTER GRAPH %s DROP NODE %s", currentGraph, quoteLabel(name))
-	return c.Gql(ctx, gql, nil)
+func (c *Client) DropNodeLabel(ctx context.Context, name string, config *QueryConfig) (*Response, error) {
+	targetGraph := c.resolveTargetGraph(config)
+	gql := fmt.Sprintf("ALTER GRAPH %s DROP NODE %s", targetGraph, quoteLabel(name))
+	return c.Gql(ctx, gql, config)
 }
 
 // DropEdgeLabel drops one or more edge labels from the current graph (closed graph).
-func (c *Client) DropEdgeLabel(ctx context.Context, names ...string) (*Response, error) {
-	currentGraph := c.sessions.GetDefaultGraph()
-	gql := fmt.Sprintf("ALTER GRAPH %s DROP EDGE %s", currentGraph, quoteLabels(names))
-	return c.Gql(ctx, gql, nil)
+// config is accepted as the first variadic-style parameter; pass nil for defaults.
+func (c *Client) DropEdgeLabel(ctx context.Context, config *QueryConfig, names ...string) (*Response, error) {
+	targetGraph := c.resolveTargetGraph(config)
+	gql := fmt.Sprintf("ALTER GRAPH %s DROP EDGE %s", targetGraph, quoteLabels(names))
+	return c.Gql(ctx, gql, config)
 }
 
 // CreateLabelIfNotExist creates a label if it does not already exist.
 // Returns (true, nil) if created, (false, nil) if it already existed.
-func (c *Client) CreateLabelIfNotExist(ctx context.Context, nodeOrEdge types.DBType, name string, props []types.PropertyDef) (bool, error) {
-	labels, err := c.ShowLabels(ctx)
+// Checks membership against the list of labels returned by SHOW LABELS
+// (multi-label groups are treated as set membership).
+func (c *Client) CreateLabelIfNotExist(ctx context.Context, nodeOrEdge types.DBType, name string, props []types.PropertyDef, config *QueryConfig) (bool, error) {
+	labels, err := c.ShowLabels(ctx, config)
 	if err != nil {
 		return false, err
 	}
 
-	targetType := "NODE"
-	if nodeOrEdge == types.DBTypeEdge {
-		targetType = "EDGE"
-	}
-
 	for _, l := range labels {
-		if l.Name == name && l.Type == targetType {
+		if labelsContain(l.Labels, name) {
 			return false, nil
 		}
 	}
 
 	if nodeOrEdge == types.DBTypeNode {
-		_, err = c.CreateNodeLabel(ctx, name, props)
+		_, err = c.CreateNodeLabel(ctx, name, props, config)
 	} else {
-		_, err = c.CreateEdgeLabel(ctx, name, props)
+		_, err = c.CreateEdgeLabel(ctx, name, props, config)
 	}
 	if err != nil {
 		return false, err
@@ -244,20 +268,20 @@ func (c *Client) CreateLabelIfNotExist(ctx context.Context, nodeOrEdge types.DBT
 }
 
 // AlterNodeLabel renames a node label.
-func (c *Client) AlterNodeLabel(ctx context.Context, oldName string, newName string) (*Response, error) {
+func (c *Client) AlterNodeLabel(ctx context.Context, oldName string, newName string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("ALTER NODE %s RENAME TO %s", quoteLabel(oldName), quoteLabel(newName))
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // AlterEdgeLabel renames an edge label.
-func (c *Client) AlterEdgeLabel(ctx context.Context, oldName string, newName string) (*Response, error) {
+func (c *Client) AlterEdgeLabel(ctx context.Context, oldName string, newName string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("ALTER EDGE %s RENAME TO %s", quoteLabel(oldName), quoteLabel(newName))
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // ShowAlgos returns all available algorithms.
-func (c *Client) ShowAlgos(ctx context.Context) ([]types.AlgoInfo, error) {
-	resp, err := c.Gql(ctx, "SHOW ALGOS", nil)
+func (c *Client) ShowAlgos(ctx context.Context, config *QueryConfig) ([]types.AlgoInfo, error) {
+	resp, err := c.Gql(ctx, "SHOW ALGOS", config)
 	if err != nil {
 		return nil, err
 	}
@@ -269,16 +293,16 @@ func (c *Client) ShowAlgos(ctx context.Context) ([]types.AlgoInfo, error) {
 // =============================================================================
 
 // ShowProperty returns properties for a label (node or edge) in the current graph.
-func (c *Client) ShowProperty(ctx context.Context, nodeOrEdge types.DBType, labelName string) ([]types.PropertyDef, error) {
+func (c *Client) ShowProperty(ctx context.Context, nodeOrEdge types.DBType, labelName string, config *QueryConfig) ([]types.PropertyDef, error) {
 	if nodeOrEdge == types.DBTypeNode {
-		return c.ShowNodeProperty(ctx, labelName)
+		return c.ShowNodeProperty(ctx, labelName, config)
 	}
-	return c.ShowEdgeProperty(ctx, labelName)
+	return c.ShowEdgeProperty(ctx, labelName, config)
 }
 
 // ShowNodeProperty returns properties for a node label.
-func (c *Client) ShowNodeProperty(ctx context.Context, labelName string) ([]types.PropertyDef, error) {
-	nt, err := c.GetNodeLabel(ctx, labelName)
+func (c *Client) ShowNodeProperty(ctx context.Context, labelName string, config *QueryConfig) ([]types.PropertyDef, error) {
+	nt, err := c.GetNodeLabel(ctx, labelName, config)
 	if err != nil {
 		return nil, err
 	}
@@ -289,8 +313,8 @@ func (c *Client) ShowNodeProperty(ctx context.Context, labelName string) ([]type
 }
 
 // ShowEdgeProperty returns properties for an edge label.
-func (c *Client) ShowEdgeProperty(ctx context.Context, labelName string) ([]types.PropertyDef, error) {
-	et, err := c.GetEdgeLabel(ctx, labelName)
+func (c *Client) ShowEdgeProperty(ctx context.Context, labelName string, config *QueryConfig) ([]types.PropertyDef, error) {
+	et, err := c.GetEdgeLabel(ctx, labelName, config)
 	if err != nil {
 		return nil, err
 	}
@@ -302,14 +326,14 @@ func (c *Client) ShowEdgeProperty(ctx context.Context, labelName string) ([]type
 
 // GetProperty returns a specific property definition for a label.
 // Returns nil if not found.
-func (c *Client) GetProperty(ctx context.Context, nodeOrEdge types.DBType, labelName string, propName string) (*types.PropertyDef, error) {
-	props, err := c.ShowProperty(ctx, nodeOrEdge, labelName)
+func (c *Client) GetProperty(ctx context.Context, nodeOrEdge types.DBType, labelName string, propName string, config *QueryConfig) (*types.PropertyDef, error) {
+	props, err := c.ShowProperty(ctx, nodeOrEdge, labelName, config)
 	if err != nil {
 		return nil, err
 	}
-	for _, p := range props {
-		if p.Name == propName {
-			return &p, nil
+	for i := range props {
+		if props[i].Name == propName {
+			return &props[i], nil
 		}
 	}
 	return nil, nil
@@ -317,63 +341,66 @@ func (c *Client) GetProperty(ctx context.Context, nodeOrEdge types.DBType, label
 
 // GetNodeProperty returns a specific property definition for a node label.
 // Returns nil if not found.
-func (c *Client) GetNodeProperty(ctx context.Context, labelName string, propName string) (*types.PropertyDef, error) {
-	return c.GetProperty(ctx, types.DBTypeNode, labelName, propName)
+func (c *Client) GetNodeProperty(ctx context.Context, labelName string, propName string, config *QueryConfig) (*types.PropertyDef, error) {
+	return c.GetProperty(ctx, types.DBTypeNode, labelName, propName, config)
 }
 
 // GetEdgeProperty returns a specific property definition for an edge label.
 // Returns nil if not found.
-func (c *Client) GetEdgeProperty(ctx context.Context, labelName string, propName string) (*types.PropertyDef, error) {
-	return c.GetProperty(ctx, types.DBTypeEdge, labelName, propName)
+func (c *Client) GetEdgeProperty(ctx context.Context, labelName string, propName string, config *QueryConfig) (*types.PropertyDef, error) {
+	return c.GetProperty(ctx, types.DBTypeEdge, labelName, propName, config)
 }
 
 // CreateProperty adds properties to a label (node or edge).
 // GQL: ALTER NODE/EDGE X ADD PROPERTY {p1 T1, p2 T2}
-func (c *Client) CreateProperty(ctx context.Context, nodeOrEdge types.DBType, labelName string, props []types.PropertyDef) (*Response, error) {
+func (c *Client) CreateProperty(ctx context.Context, nodeOrEdge types.DBType, labelName string, props []types.PropertyDef, config *QueryConfig) (*Response, error) {
 	if nodeOrEdge == types.DBTypeNode {
-		return c.CreateNodeProperty(ctx, labelName, props)
+		return c.CreateNodeProperty(ctx, labelName, props, config)
 	}
-	return c.CreateEdgeProperty(ctx, labelName, props)
+	return c.CreateEdgeProperty(ctx, labelName, props, config)
 }
 
 // CreateNodeProperty adds properties to a node label.
-func (c *Client) CreateNodeProperty(ctx context.Context, labelName string, props []types.PropertyDef) (*Response, error) {
+func (c *Client) CreateNodeProperty(ctx context.Context, labelName string, props []types.PropertyDef, config *QueryConfig) (*Response, error) {
 	propStr := buildPropertyDefString(props)
 	gql := fmt.Sprintf("ALTER NODE %s ADD PROPERTY %s", quoteLabel(labelName), propStr)
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // CreateEdgeProperty adds properties to an edge label.
-func (c *Client) CreateEdgeProperty(ctx context.Context, labelName string, props []types.PropertyDef) (*Response, error) {
+func (c *Client) CreateEdgeProperty(ctx context.Context, labelName string, props []types.PropertyDef, config *QueryConfig) (*Response, error) {
 	propStr := buildPropertyDefString(props)
 	gql := fmt.Sprintf("ALTER EDGE %s ADD PROPERTY %s", quoteLabel(labelName), propStr)
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // DropProperty drops properties from a label (node or edge).
-func (c *Client) DropProperty(ctx context.Context, nodeOrEdge types.DBType, labelName string, propNames ...string) (*Response, error) {
+// config is accepted as a parameter before the variadic propNames; pass nil for defaults.
+func (c *Client) DropProperty(ctx context.Context, nodeOrEdge types.DBType, labelName string, config *QueryConfig, propNames ...string) (*Response, error) {
 	if nodeOrEdge == types.DBTypeNode {
-		return c.DropNodeProperty(ctx, labelName, propNames...)
+		return c.DropNodeProperty(ctx, labelName, config, propNames...)
 	}
-	return c.DropEdgeProperty(ctx, labelName, propNames...)
+	return c.DropEdgeProperty(ctx, labelName, config, propNames...)
 }
 
 // DropNodeProperty drops properties from a node label.
-func (c *Client) DropNodeProperty(ctx context.Context, labelName string, propNames ...string) (*Response, error) {
+// config is accepted as a parameter before the variadic propNames; pass nil for defaults.
+func (c *Client) DropNodeProperty(ctx context.Context, labelName string, config *QueryConfig, propNames ...string) (*Response, error) {
 	gql := fmt.Sprintf("ALTER NODE %s DROP PROPERTY %s", quoteLabel(labelName), quoteLabels(propNames))
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // DropEdgeProperty drops properties from an edge label.
-func (c *Client) DropEdgeProperty(ctx context.Context, labelName string, propNames ...string) (*Response, error) {
+// config is accepted as a parameter before the variadic propNames; pass nil for defaults.
+func (c *Client) DropEdgeProperty(ctx context.Context, labelName string, config *QueryConfig, propNames ...string) (*Response, error) {
 	gql := fmt.Sprintf("ALTER EDGE %s DROP PROPERTY %s", quoteLabel(labelName), quoteLabels(propNames))
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // CreatePropertyIfNotExist creates properties on a label if they do not already exist.
 // Returns (true, nil) if any properties were created, (false, nil) if all already existed.
-func (c *Client) CreatePropertyIfNotExist(ctx context.Context, nodeOrEdge types.DBType, labelName string, props []types.PropertyDef) (bool, error) {
-	existing, err := c.ShowProperty(ctx, nodeOrEdge, labelName)
+func (c *Client) CreatePropertyIfNotExist(ctx context.Context, nodeOrEdge types.DBType, labelName string, props []types.PropertyDef, config *QueryConfig) (bool, error) {
+	existing, err := c.ShowProperty(ctx, nodeOrEdge, labelName, config)
 	if err != nil {
 		return false, err
 	}
@@ -394,7 +421,7 @@ func (c *Client) CreatePropertyIfNotExist(ctx context.Context, nodeOrEdge types.
 		return false, nil
 	}
 
-	_, err = c.CreateProperty(ctx, nodeOrEdge, labelName, newProps)
+	_, err = c.CreateProperty(ctx, nodeOrEdge, labelName, newProps, config)
 	if err != nil {
 		return false, err
 	}
@@ -406,31 +433,33 @@ func (c *Client) CreatePropertyIfNotExist(ctx context.Context, nodeOrEdge types.
 // =============================================================================
 
 // CreateNotNullConstraint creates a NOT NULL constraint on a property.
-func (c *Client) CreateNotNullConstraint(ctx context.Context, nodeOrEdge types.DBType, labelName string, propName string) (*Response, error) {
+func (c *Client) CreateNotNullConstraint(ctx context.Context, nodeOrEdge types.DBType, labelName string, propName string, config *QueryConfig) (*Response, error) {
 	entityType := dbTypeToKeyword(nodeOrEdge)
 	gql := fmt.Sprintf("ALTER %s %s ADD CONSTRAINT NOT NULL ON %s", entityType, quoteLabel(labelName), quoteLabel(propName))
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // CreateUniqueConstraint creates a UNIQUE constraint on one or more properties.
-func (c *Client) CreateUniqueConstraint(ctx context.Context, nodeOrEdge types.DBType, labelName string, propNames ...string) (*Response, error) {
+// config is accepted as a parameter before the variadic propNames; pass nil for defaults.
+func (c *Client) CreateUniqueConstraint(ctx context.Context, nodeOrEdge types.DBType, labelName string, config *QueryConfig, propNames ...string) (*Response, error) {
 	entityType := dbTypeToKeyword(nodeOrEdge)
 	gql := fmt.Sprintf("ALTER %s %s ADD CONSTRAINT UNIQUE ON %s", entityType, quoteLabel(labelName), quoteLabels(propNames))
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // DropNotNullConstraint removes a NOT NULL constraint from a property.
-func (c *Client) DropNotNullConstraint(ctx context.Context, nodeOrEdge types.DBType, labelName string, propName string) (*Response, error) {
+func (c *Client) DropNotNullConstraint(ctx context.Context, nodeOrEdge types.DBType, labelName string, propName string, config *QueryConfig) (*Response, error) {
 	entityType := dbTypeToKeyword(nodeOrEdge)
 	gql := fmt.Sprintf("ALTER %s %s DROP CONSTRAINT NOT NULL ON %s", entityType, quoteLabel(labelName), quoteLabel(propName))
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // DropUniqueConstraint removes a UNIQUE constraint from one or more properties.
-func (c *Client) DropUniqueConstraint(ctx context.Context, nodeOrEdge types.DBType, labelName string, propNames ...string) (*Response, error) {
+// config is accepted as a parameter before the variadic propNames; pass nil for defaults.
+func (c *Client) DropUniqueConstraint(ctx context.Context, nodeOrEdge types.DBType, labelName string, config *QueryConfig, propNames ...string) (*Response, error) {
 	entityType := dbTypeToKeyword(nodeOrEdge)
 	gql := fmt.Sprintf("ALTER %s %s DROP CONSTRAINT UNIQUE ON %s", entityType, quoteLabel(labelName), quoteLabels(propNames))
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // =============================================================================
@@ -438,9 +467,9 @@ func (c *Client) DropUniqueConstraint(ctx context.Context, nodeOrEdge types.DBTy
 // =============================================================================
 
 // ShowIndex returns all indexes in the current graph.
-func (c *Client) ShowIndex(ctx context.Context) ([]types.IndexInfo, error) {
+func (c *Client) ShowIndex(ctx context.Context, config *QueryConfig) ([]types.IndexInfo, error) {
 	gql := "SHOW INDEX"
-	resp, err := c.Gql(ctx, gql, nil)
+	resp, err := c.Gql(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -448,9 +477,9 @@ func (c *Client) ShowIndex(ctx context.Context) ([]types.IndexInfo, error) {
 }
 
 // ShowNodeIndex returns all node indexes in the current graph.
-func (c *Client) ShowNodeIndex(ctx context.Context) ([]types.IndexInfo, error) {
+func (c *Client) ShowNodeIndex(ctx context.Context, config *QueryConfig) ([]types.IndexInfo, error) {
 	gql := "SHOW NODE INDEX"
-	resp, err := c.Gql(ctx, gql, nil)
+	resp, err := c.Gql(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -458,9 +487,9 @@ func (c *Client) ShowNodeIndex(ctx context.Context) ([]types.IndexInfo, error) {
 }
 
 // ShowEdgeIndex returns all edge indexes in the current graph.
-func (c *Client) ShowEdgeIndex(ctx context.Context) ([]types.IndexInfo, error) {
+func (c *Client) ShowEdgeIndex(ctx context.Context, config *QueryConfig) ([]types.IndexInfo, error) {
 	gql := "SHOW EDGE INDEX"
-	resp, err := c.Gql(ctx, gql, nil)
+	resp, err := c.Gql(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -469,29 +498,29 @@ func (c *Client) ShowEdgeIndex(ctx context.Context) ([]types.IndexInfo, error) {
 
 // CreateNodeIndex creates an index on a node label.
 // GQL: CREATE INDEX name ON NODE Label (prop1, prop2(prefixLen))
-func (c *Client) CreateNodeIndex(ctx context.Context, indexName string, labelName string, props []types.IndexProperty) (*Response, error) {
+func (c *Client) CreateNodeIndex(ctx context.Context, indexName string, labelName string, props []types.IndexProperty, config *QueryConfig) (*Response, error) {
 	propStr := buildIndexPropertyString(props)
 	gql := fmt.Sprintf("CREATE INDEX %s ON NODE %s (%s)", indexName, quoteLabel(labelName), propStr)
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // CreateEdgeIndex creates an index on an edge label.
-func (c *Client) CreateEdgeIndex(ctx context.Context, indexName string, labelName string, props []types.IndexProperty) (*Response, error) {
+func (c *Client) CreateEdgeIndex(ctx context.Context, indexName string, labelName string, props []types.IndexProperty, config *QueryConfig) (*Response, error) {
 	propStr := buildIndexPropertyString(props)
 	gql := fmt.Sprintf("CREATE INDEX %s ON EDGE %s (%s)", indexName, quoteLabel(labelName), propStr)
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // DropNodeIndex drops a node index by name.
-func (c *Client) DropNodeIndex(ctx context.Context, indexName string) (*Response, error) {
+func (c *Client) DropNodeIndex(ctx context.Context, indexName string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("DROP NODE INDEX %s", indexName)
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // DropEdgeIndex drops an edge index by name.
-func (c *Client) DropEdgeIndex(ctx context.Context, indexName string) (*Response, error) {
+func (c *Client) DropEdgeIndex(ctx context.Context, indexName string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("DROP EDGE INDEX %s", indexName)
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // =============================================================================
@@ -499,9 +528,9 @@ func (c *Client) DropEdgeIndex(ctx context.Context, indexName string) (*Response
 // =============================================================================
 
 // ShowFulltext returns all fulltext indexes in the current graph.
-func (c *Client) ShowFulltext(ctx context.Context) ([]types.FulltextInfo, error) {
+func (c *Client) ShowFulltext(ctx context.Context, config *QueryConfig) ([]types.FulltextInfo, error) {
 	gql := "SHOW FULLTEXT"
-	resp, err := c.Gql(ctx, gql, nil)
+	resp, err := c.Gql(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -509,9 +538,9 @@ func (c *Client) ShowFulltext(ctx context.Context) ([]types.FulltextInfo, error)
 }
 
 // ShowNodeFulltext returns all node fulltext indexes.
-func (c *Client) ShowNodeFulltext(ctx context.Context) ([]types.FulltextInfo, error) {
+func (c *Client) ShowNodeFulltext(ctx context.Context, config *QueryConfig) ([]types.FulltextInfo, error) {
 	gql := "SHOW NODE FULLTEXT"
-	resp, err := c.Gql(ctx, gql, nil)
+	resp, err := c.Gql(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -519,9 +548,9 @@ func (c *Client) ShowNodeFulltext(ctx context.Context) ([]types.FulltextInfo, er
 }
 
 // ShowEdgeFulltext returns all edge fulltext indexes.
-func (c *Client) ShowEdgeFulltext(ctx context.Context) ([]types.FulltextInfo, error) {
+func (c *Client) ShowEdgeFulltext(ctx context.Context, config *QueryConfig) ([]types.FulltextInfo, error) {
 	gql := "SHOW EDGE FULLTEXT"
-	resp, err := c.Gql(ctx, gql, nil)
+	resp, err := c.Gql(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -530,27 +559,27 @@ func (c *Client) ShowEdgeFulltext(ctx context.Context) ([]types.FulltextInfo, er
 
 // CreateNodeFulltext creates a fulltext index on a node label.
 // GQL: CREATE FULLTEXT name ON NODE Label (prop1, prop2)
-func (c *Client) CreateNodeFulltext(ctx context.Context, indexName string, labelName string, props []string) (*Response, error) {
+func (c *Client) CreateNodeFulltext(ctx context.Context, indexName string, labelName string, props []string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("CREATE FULLTEXT %s ON NODE %s (%s)", indexName, quoteLabel(labelName), quoteLabels(props))
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // CreateEdgeFulltext creates a fulltext index on an edge label.
-func (c *Client) CreateEdgeFulltext(ctx context.Context, indexName string, labelName string, props []string) (*Response, error) {
+func (c *Client) CreateEdgeFulltext(ctx context.Context, indexName string, labelName string, props []string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("CREATE FULLTEXT %s ON EDGE %s (%s)", indexName, quoteLabel(labelName), quoteLabels(props))
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // DropNodeFulltext drops a node fulltext index by name.
-func (c *Client) DropNodeFulltext(ctx context.Context, indexName string) (*Response, error) {
+func (c *Client) DropNodeFulltext(ctx context.Context, indexName string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("DROP NODE FULLTEXT %s", indexName)
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // DropEdgeFulltext drops an edge fulltext index by name.
-func (c *Client) DropEdgeFulltext(ctx context.Context, indexName string) (*Response, error) {
+func (c *Client) DropEdgeFulltext(ctx context.Context, indexName string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("DROP EDGE FULLTEXT %s", indexName)
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // =============================================================================
@@ -558,9 +587,9 @@ func (c *Client) DropEdgeFulltext(ctx context.Context, indexName string) (*Respo
 // =============================================================================
 
 // ShowTasks returns all tasks in the current graph.
-func (c *Client) ShowTasks(ctx context.Context) ([]types.TaskInfo, error) {
+func (c *Client) ShowTasks(ctx context.Context, config *QueryConfig) ([]types.TaskInfo, error) {
 	gql := "SHOW TASKS"
-	resp, err := c.Gql(ctx, gql, nil)
+	resp, err := c.Gql(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -568,27 +597,38 @@ func (c *Client) ShowTasks(ctx context.Context) ([]types.TaskInfo, error) {
 }
 
 // DeleteTask deletes a task by ID.
-func (c *Client) DeleteTask(ctx context.Context, taskId string) (*Response, error) {
+func (c *Client) DeleteTask(ctx context.Context, taskId string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("DELETE TASK %s", taskId)
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // StopTask stops a running task by ID.
-func (c *Client) StopTask(ctx context.Context, taskId string) (*Response, error) {
+func (c *Client) StopTask(ctx context.Context, taskId string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("STOP TASK %s", taskId)
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, config)
 }
 
 // =============================================================================
 // Convenience API — Data Insert Operations (2 methods)
 // =============================================================================
 
+// insertConfigToQueryConfig returns a *QueryConfig pointing at ic.QueryConfig
+// (for passing through to Gql), or nil if ic is nil.
+func insertConfigToQueryConfig(ic *types.InsertConfig) *types.QueryConfig {
+	if ic == nil {
+		return nil
+	}
+	qc := ic.QueryConfig
+	return &qc
+}
+
 // InsertNodes inserts nodes using GQL INSERT syntax with RETURN clause.
 // GQL: INSERT (n0:Label {p1: v1}), (n1:Label {p2: v2}) RETURN n0, n1
-// When insertType is InsertTypeOverwrite, uses INSERT OVERWRITE syntax.
+// When config.InsertType is InsertTypeOverwrite, uses INSERT OVERWRITE syntax.
 // If NodeData.ID is set (non-empty), includes it as _id property in the GQL.
+// config may be nil; the default is the session graph and InsertTypeNormal.
 // Returns the raw Response containing the inserted nodes in columns n0, n1, etc.
-func (c *Client) InsertNodes(ctx context.Context, nodes []types.NodeData, insertType types.InsertType) (*Response, error) {
+func (c *Client) InsertNodes(ctx context.Context, nodes []types.NodeData, config *InsertConfig) (*Response, error) {
 	if len(nodes) == 0 {
 		return &Response{}, nil
 	}
@@ -625,27 +665,30 @@ func (c *Client) InsertNodes(ctx context.Context, nodes []types.NodeData, insert
 	}
 
 	insertKeyword := "INSERT"
-	if insertType == types.InsertTypeOverwrite {
+	if config != nil && config.InsertType == types.InsertTypeOverwrite {
 		insertKeyword = "INSERT OVERWRITE"
 	}
 	gql := insertKeyword + " " + strings.Join(parts, ", ") + " RETURN " + strings.Join(varNames, ", ")
-	return c.Gql(ctx, gql, nil)
+	return c.Gql(ctx, gql, insertConfigToQueryConfig(config))
 }
 
 // InsertEdges inserts edges using GQL INSERT syntax with RETURN clause.
 // Each edge is inserted individually using MATCH + INSERT to resolve node IDs.
 // GQL: MATCH (src WHERE id(src) = 'from'), (dst WHERE id(dst) = 'to') INSERT (src)-[e0:Label {p1: v1}]->(dst) RETURN e0
-// When insertType is InsertTypeOverwrite, uses INSERT OVERWRITE syntax.
+// When config.InsertType is InsertTypeOverwrite, uses INSERT OVERWRITE syntax.
+// config may be nil; the default is the session graph and InsertTypeNormal.
 // Returns a merged Response containing all inserted edges in columns e0, e1, etc.
-func (c *Client) InsertEdges(ctx context.Context, edges []types.EdgeData, insertType types.InsertType) (*Response, error) {
+func (c *Client) InsertEdges(ctx context.Context, edges []types.EdgeData, config *InsertConfig) (*Response, error) {
 	if len(edges) == 0 {
 		return &Response{}, nil
 	}
 
 	insertKeyword := "INSERT"
-	if insertType == types.InsertTypeOverwrite {
+	if config != nil && config.InsertType == types.InsertTypeOverwrite {
 		insertKeyword = "INSERT OVERWRITE"
 	}
+
+	qc := insertConfigToQueryConfig(config)
 
 	var allColumns []string
 	var allValues []*TypedValue
@@ -666,7 +709,7 @@ func (c *Client) InsertEdges(ctx context.Context, edges []types.EdgeData, insert
 		gql := fmt.Sprintf(
 			"MATCH (src WHERE id(src) = '%s'), (dst WHERE id(dst) = '%s') %s (src)-%s->(dst) RETURN %s",
 			edge.FromNodeID, edge.ToNodeID, insertKeyword, edgePart, varName)
-		resp, err := c.Gql(ctx, gql, nil)
+		resp, err := c.Gql(ctx, gql, qc)
 		if err != nil {
 			return nil, err
 		}
@@ -734,6 +777,17 @@ func findColumnIndex(resp *Response, name string) int {
 	return -1
 }
 
+// findColumnIndexAny returns the index of the first column matching any of the
+// given names (case-insensitive), or -1 if none match.
+func findColumnIndexAny(resp *Response, names ...string) int {
+	for _, n := range names {
+		if idx := findColumnIndex(resp, n); idx >= 0 {
+			return idx
+		}
+	}
+	return -1
+}
+
 // getStringVal safely extracts a string from a row at the given column index.
 func getStringVal(row *Row, idx int) string {
 	if idx < 0 || idx >= len(row.Values) {
@@ -758,19 +812,61 @@ func getInt64Val(row *Row, idx int) int64 {
 	return val
 }
 
-func parseLabelInfoRows(resp *Response) ([]types.LabelInfo, error) {
+// parseLabelsValue normalizes a label column value (list, string, or nil) into
+// a []string, matching the Python SDK's _parse_labels_value helper.
+func parseLabelsValue(v interface{}) []string {
+	if v == nil {
+		return nil
+	}
+	switch val := v.(type) {
+	case []string:
+		return val
+	case []interface{}:
+		out := make([]string, len(val))
+		for i, item := range val {
+			out[i] = fmt.Sprintf("%v", item)
+		}
+		return out
+	case string:
+		return []string{val}
+	}
+	// Fall back to reflection for other slice types.
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		out := make([]string, rv.Len())
+		for i := 0; i < rv.Len(); i++ {
+			out[i] = fmt.Sprintf("%v", rv.Index(i).Interface())
+		}
+		return out
+	}
+	return []string{fmt.Sprintf("%v", v)}
+}
+
+// parseLabelInfoRows parses a SHOW LABELS / SHOW NODE LABELS / SHOW EDGE LABELS
+// response into LabelInfo values. The server returns labels as a list column
+// (multi-label support); defaultType is applied when the response does not
+// include a type column.
+func parseLabelInfoRows(resp *Response, defaultType string) ([]types.LabelInfo, error) {
 	if resp == nil || len(resp.Rows) == 0 {
 		return nil, nil
 	}
 
-	labelIdx := findColumnIndex(resp, "label")
-	typeIdx := findColumnIndex(resp, "type")
+	labelIdx := findColumnIndexAny(resp, "label", "name")
+	typeIdx := findColumnIndexAny(resp, "type", "element_type")
 
 	result := make([]types.LabelInfo, 0, len(resp.Rows))
 	for _, row := range resp.Rows {
-		info := types.LabelInfo{
-			Name: getStringVal(row, labelIdx),
-			Type: getStringVal(row, typeIdx),
+		info := types.LabelInfo{Type: defaultType}
+		if labelIdx >= 0 && labelIdx < len(row.Values) {
+			raw, err := row.Get(labelIdx)
+			if err == nil {
+				info.Labels = parseLabelsValue(raw)
+			}
+		}
+		if typeIdx >= 0 {
+			if t := getStringVal(row, typeIdx); t != "" {
+				info.Type = t
+			}
 		}
 		result = append(result, info)
 	}

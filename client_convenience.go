@@ -52,8 +52,14 @@ func labelsContain(labels []string, s string) bool {
 // =============================================================================
 
 // CreateOpenGraph creates a new open (schema-less) graph.
+//
+// v6 GQL semantics:
+//   - `CREATE GRAPH g`     -> OPEN graph (labels/properties created on INSERT)
+//   - `CREATE GRAPH g {}`  -> CLOSED graph (even an empty brace pair triggers CLOSED)
+//
+// We must therefore use the brace-less form here.
 func (c *Client) CreateOpenGraph(ctx context.Context, name string, config *QueryConfig) (*Response, error) {
-	return c.Gql(ctx, fmt.Sprintf("CREATE GRAPH %s {}", name), config)
+	return c.Gql(ctx, fmt.Sprintf("CREATE GRAPH %s", name), config)
 }
 
 // CreateClosedGraph creates a new empty closed (schema-enforced) graph.
@@ -1244,4 +1250,164 @@ func toInt64(v interface{}) int64 {
 	default:
 		return 0
 	}
+}
+
+// =============================================================================
+// Convenience API — AI (2 methods)
+// =============================================================================
+
+// aiYieldCols is the YIELD column list produced by CALL ai.read / ai.gql.
+const aiYieldCols = "stage, detail, elapsed_ms, tokens_input, tokens_output, tokens_cached, data"
+
+// AiRead asks the AI agent to generate a GQL statement for the given prompt
+// and automatically re-executes it so AiReadResult.Data is a proper *Response
+// (rows/columns) — mirroring what the Manager UI displays.
+//
+// It wraps `CALL ai.read("<prompt>") YIELD ...`, streams stage rows
+// (start / routing / intent_extraction / describe_algorithm / generation /
+// validation / execution / final / error), and consolidates them into a
+// typed AiReadResult.
+//
+// AI-level errors (any stage reporting "error", or the generated GQL failing
+// to execute) set result.Success = false and populate result.Error; the
+// returned Go error is only non-nil for transport-level failures on the
+// initial CALL.
+func (c *Client) AiRead(ctx context.Context, prompt string, config *QueryConfig) (*AiReadResult, error) {
+	gql := fmt.Sprintf(`CALL ai.read("%s") YIELD %s`, escapeAiPrompt(prompt), aiYieldCols)
+	resp, err := c.Gql(ctx, gql, config)
+	if err != nil {
+		return nil, err
+	}
+	result := parseAiResult(resp)
+	// Auto re-run the generated GQL so Data is a proper *Response (rows/columns),
+	// not the execution metadata map returned in the final stage.
+	if result.Success && result.GeneratedGql != "" {
+		data, execErr := c.Gql(ctx, result.GeneratedGql, config)
+		if execErr != nil {
+			result.Success = false
+			result.Error = fmt.Sprintf("Generated GQL failed to execute: %v", execErr)
+			result.Data = nil
+		} else {
+			result.Data = data
+		}
+	} else {
+		result.Data = nil
+	}
+	return result, nil
+}
+
+// AiGql asks the AI agent to generate a GQL statement for the given prompt
+// without executing it. The synthesized GQL is exposed via
+// AiReadResult.GeneratedGql so the caller can review or edit it before
+// running it manually via client.Gql().
+//
+// AiReadResult.Data is always nil for AiGql — no execution happens.
+//
+// AI-level errors set result.Success = false and populate result.Error; the
+// returned Go error is only non-nil for transport-level failures on the
+// initial CALL.
+func (c *Client) AiGql(ctx context.Context, prompt string, config *QueryConfig) (*AiReadResult, error) {
+	gql := fmt.Sprintf(`CALL ai.gql("%s") YIELD %s`, escapeAiPrompt(prompt), aiYieldCols)
+	resp, err := c.Gql(ctx, gql, config)
+	if err != nil {
+		return nil, err
+	}
+	result := parseAiResult(resp)
+	// ai_gql is "generate only" — never auto-execute.
+	result.Data = nil
+	return result, nil
+}
+
+// escapeAiPrompt escapes a prompt so it can be safely embedded in a
+// double-quoted GQL string literal.
+func escapeAiPrompt(prompt string) string {
+	// Order matters: escape backslashes first, then double quotes.
+	prompt = strings.ReplaceAll(prompt, `\`, `\\`)
+	prompt = strings.ReplaceAll(prompt, `"`, `\"`)
+	return prompt
+}
+
+// parseAiResult parses a CALL ai.read / ai.gql YIELD response into an
+// AiReadResult with aggregated stage metadata and extracted generated GQL.
+func parseAiResult(resp *Response) *AiReadResult {
+	result := &AiReadResult{Success: true}
+	if resp == nil {
+		return result
+	}
+
+	stageIdx := findColumnIndex(resp, "stage")
+	detailIdx := findColumnIndex(resp, "detail")
+	elapsedIdx := findColumnIndex(resp, "elapsed_ms")
+	tiIdx := findColumnIndex(resp, "tokens_input")
+	toIdx := findColumnIndex(resp, "tokens_output")
+	tcIdx := findColumnIndex(resp, "tokens_cached")
+	dataIdx := findColumnIndex(resp, "data")
+
+	result.Stages = make([]types.AiStage, 0, len(resp.Rows))
+	for _, row := range resp.Rows {
+		var dataVal interface{}
+		if dataIdx >= 0 && dataIdx < len(row.Values) {
+			if v, err := row.Get(dataIdx); err == nil {
+				dataVal = v
+			}
+		}
+
+		stage := types.AiStage{
+			Stage:        getStringVal(row, stageIdx),
+			Detail:       getStringVal(row, detailIdx),
+			ElapsedMs:    getInt64Val(row, elapsedIdx),
+			TokensInput:  getInt64Val(row, tiIdx),
+			TokensOutput: getInt64Val(row, toIdx),
+			TokensCached: getInt64Val(row, tcIdx),
+			Data:         dataVal,
+		}
+		result.Stages = append(result.Stages, stage)
+
+		// Track aggregates: elapsed_ms is a monotonic counter — take max.
+		if stage.ElapsedMs > result.TotalElapsedMs {
+			result.TotalElapsedMs = stage.ElapsedMs
+		}
+		result.TotalTokensInput += stage.TokensInput
+		result.TotalTokensOutput += stage.TokensOutput
+		result.TotalTokensCached += stage.TokensCached
+
+		// Extract generated GQL from any stage's data.{gql, final_gql, candidate}.
+		if m, ok := stage.Data.(map[string]interface{}); ok {
+			for _, key := range []string{"gql", "final_gql", "candidate"} {
+				if raw, exists := m[key]; exists {
+					if s, isStr := raw.(string); isStr && strings.TrimSpace(s) != "" {
+						result.GeneratedGql = s
+						break
+					}
+				}
+			}
+		}
+
+		if stage.Stage == "error" {
+			result.Success = false
+			if stage.Detail != "" {
+				result.Error = stage.Detail
+			} else {
+				result.Error = "AI stage reported error"
+			}
+		}
+		// Note: the server emits the final query result in the final stage's
+		// data map, but AiRead re-executes the generated GQL to produce a
+		// proper *Response, so we do not assign stage.Data to result.Data
+		// here (that assignment is Python's generic Any typing).
+	}
+
+	// Fallback: if generated_gql wasn't captured from any data dict, try
+	// the final stage's detail field.
+	if result.GeneratedGql == "" {
+		for i := len(result.Stages) - 1; i >= 0; i-- {
+			s := result.Stages[i]
+			if s.Stage == "final" && s.Detail != "" {
+				result.GeneratedGql = s.Detail
+				break
+			}
+		}
+	}
+
+	return result
 }

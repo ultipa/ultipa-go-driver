@@ -126,6 +126,20 @@ type AlgoInfo struct {
 	Parameters  string
 }
 
+// AiStage represents a single streaming stage row returned by
+// CALL ai.read(...) or CALL ai.gql(...). Known stage values are:
+// start / routing / intent_extraction / describe_algorithm /
+// generation / validation / execution / final / error.
+type AiStage struct {
+	Stage        string      // stage name (see above)
+	Detail       string      // human-readable detail for the stage
+	ElapsedMs    int64       // elapsed milliseconds at this stage
+	TokensInput  int64       // input tokens consumed at this stage
+	TokensOutput int64       // output tokens produced at this stage
+	TokensCached int64       // cached tokens reused at this stage
+	Data         interface{} // stage-specific payload (typically map[string]interface{})
+}
+
 // ParsePropertyTypeString converts a GQL type name string (e.g. "INTEGER", "STRING")
 // to a PropertyType. Returns PropertyTypeString for unrecognized types.
 func ParsePropertyTypeString(s string) PropertyType {

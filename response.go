@@ -3,6 +3,8 @@ package gqldb
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/ultipa/ultipa-go-driver/v6/types"
 )
 
 // Response represents the result of a GQL query.
@@ -214,6 +216,27 @@ func (resp *Response) ToJSON() ([]byte, error) {
 		return nil, err
 	}
 	return json.Marshal(maps)
+}
+
+// AiReadResult is the consolidated result of an AiRead / AiGql call.
+//
+// For AiRead, when Success is true and GeneratedGql is populated, Data
+// holds the *Response from re-executing the generated GQL. For AiGql,
+// Data is always nil (generate-only).
+//
+// AI-level errors do not surface as Go errors: Success is set to false
+// and Error is populated instead. Only transport-level failures on the
+// initial CALL return a non-nil error from AiRead/AiGql.
+type AiReadResult struct {
+	Stages            []types.AiStage // ordered list of stage rows as streamed
+	GeneratedGql      string          // synthesized GQL statement (best-effort extract)
+	Data              *Response       // re-executed GQL result for AiRead; nil for AiGql
+	Success           bool            // false if any stage reported "error" or re-execution failed
+	Error             string          // error message (populated when Success is false)
+	TotalElapsedMs    int64           // max elapsed_ms across stages (monotonic timer)
+	TotalTokensInput  int64           // sum of tokens_input across stages
+	TotalTokensOutput int64           // sum of tokens_output across stages
+	TotalTokensCached int64           // sum of tokens_cached across stages
 }
 
 // InsertNodesResult represents the result of an insert nodes operation.

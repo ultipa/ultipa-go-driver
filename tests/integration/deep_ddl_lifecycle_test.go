@@ -144,7 +144,10 @@ func TestDeepDDLLifecycle(t *testing.T) {
 		newLbl := fmt.Sprintf("NewLbl%d", rand.Intn(900)+100)
 		testClient.Gql(ctx, "INSERT (:"+oldLbl+" {name: 'test'})", cfg)
 		testClient.Gql(ctx, "ALTER NODE "+oldLbl+" RENAME TO "+newLbl, cfg)
-		resp, _ := testClient.Gql(ctx, "SHOW NODE LABELS", cfg)
+		resp, err := testClient.Gql(ctx, "SHOW NODE LABELS", cfg)
+		if err != nil || resp == nil {
+			t.Fatalf("SHOW NODE LABELS failed (resp=%v err=%v)", resp, err)
+		}
 		foundNew := false
 		if len(resp.Columns) > 0 {
 			col0 := resp.Columns[0]

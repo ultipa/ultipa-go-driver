@@ -128,6 +128,9 @@ type InsertNodesConfig = types.InsertNodesConfig
 type InsertEdgesConfig = types.InsertEdgesConfig
 type HealthWatcher = types.HealthWatcher
 
+// Re-export AI convenience types.
+type AiStage = types.AiStage
+
 // Re-export InsertType constants used by InsertConfig.
 type InsertType = types.InsertType
 

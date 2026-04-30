@@ -7,6 +7,8 @@ import (
 	"time"
 
 	pb "github.com/ultipa/ultipa-go-driver/v6/proto"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // QueryService handles query execution operations.
@@ -60,6 +62,10 @@ type Parameter struct {
 }
 
 // Gql executes a GQL query and returns the results.
+//
+// Falls back to GqlStream + client-side aggregation when the server
+// rejects the result set as too large for non-streaming RPC
+// (RESOURCE_EXHAUSTED with "use streaming API" detail).
 func (s *QueryService) Gql(ctx context.Context, query string, config *QueryConfig,
 	newParameter func(name string, value interface{}) (*Parameter, error),
 	getDefaultGraph func() string, getTimeout func() int) (*Response, error) {
@@ -73,6 +79,11 @@ func (s *QueryService) Gql(ctx context.Context, query string, config *QueryConfi
 
 	resp, err := s.ctx.QueryClient.Gql(ctx, req)
 	if err != nil {
+		if st, ok := status.FromError(err); ok &&
+			st.Code() == codes.ResourceExhausted &&
+			strings.Contains(st.Message(), "use streaming API") {
+			return s.gqlStreamCollect(ctx, query, config, newParameter, getDefaultGraph, getTimeout)
+		}
 		return nil, err
 	}
 
@@ -88,6 +99,33 @@ func (s *QueryService) Gql(ctx context.Context, query string, config *QueryConfi
 	}
 
 	return s.convertGqlResponse(resp)
+}
+
+// gqlStreamCollect runs GqlStream and aggregates chunks into a single Response.
+// Used as fallback from Gql when the server rejects the result set as too large.
+func (s *QueryService) gqlStreamCollect(ctx context.Context, query string, config *QueryConfig,
+	newParameter func(name string, value interface{}) (*Parameter, error),
+	getDefaultGraph func() string, getTimeout func() int) (*Response, error) {
+
+	merged := &Response{}
+	first := true
+	err := s.GqlStream(ctx, query, config, func(chunk *Response) error {
+		if first {
+			merged.Columns = chunk.Columns
+			first = false
+		}
+		merged.Rows = append(merged.Rows, chunk.Rows...)
+		merged.Warnings = append(merged.Warnings, chunk.Warnings...)
+		if chunk.RowsAffected != 0 {
+			merged.RowsAffected = chunk.RowsAffected
+		}
+		return nil
+	}, newParameter, getDefaultGraph, getTimeout)
+	if err != nil {
+		return nil, err
+	}
+	merged.RowCount = int64(len(merged.Rows))
+	return merged, nil
 }
 
 // GqlStream executes a GQL query and streams the results.

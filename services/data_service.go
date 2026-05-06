@@ -58,14 +58,17 @@ type DeleteResult struct {
 }
 
 // InsertNodesConfig represents configuration for inserting nodes.
+// See types.InsertNodesConfig for semantic docs.
 type InsertNodesConfig struct {
-	Overwrite           bool
+	Mode                pb.InsertMode
 	BulkImportSessionID string
 }
 
 // InsertEdgesConfig represents configuration for inserting edges.
+// See types.InsertEdgesConfig for semantic docs.
 type InsertEdgesConfig struct {
 	SkipInvalidNodes    bool
+	Mode                pb.InsertMode
 	BulkImportSessionID string
 }
 
@@ -97,16 +100,14 @@ func (s *DataService) InsertNodes(ctx context.Context, graphName string, nodes [
 	if config != nil {
 		// Always set options when config is provided
 		req.Options = &pb.BulkCreateNodesOptions{
-			Overwrite: config.Overwrite,
+			Mode: config.Mode,
 		}
 		if config.BulkImportSessionID != "" {
 			req.BulkImportSessionId = config.BulkImportSessionID
 		}
 	} else {
 		// ALWAYS provide options, even when config is nil (defensive programming)
-		req.Options = &pb.BulkCreateNodesOptions{
-			Overwrite: false,
-		}
+		req.Options = &pb.BulkCreateNodesOptions{}
 	}
 
 	resp, err := s.ctx.DataClient.InsertNodes(ctx, req)
@@ -136,6 +137,7 @@ func (s *DataService) InsertEdges(ctx context.Context, graphName string, edges [
 			return nil, err
 		}
 		pbEdges[i] = &pb.EdgeData{
+			Id:         e.ID,
 			Label:      e.Label,
 			FromNodeId: e.From,
 			ToNodeId:   e.To,
@@ -153,15 +155,14 @@ func (s *DataService) InsertEdges(ctx context.Context, graphName string, edges [
 		// Always set options when config is provided
 		req.Options = &pb.BulkCreateEdgesOptions{
 			SkipInvalidNodes: config.SkipInvalidNodes,
+			Mode:             config.Mode,
 		}
 		if config.BulkImportSessionID != "" {
 			req.BulkImportSessionId = config.BulkImportSessionID
 		}
 	} else {
 		// ALWAYS provide options, even when config is nil (defensive programming)
-		req.Options = &pb.BulkCreateEdgesOptions{
-			SkipInvalidNodes: false,
-		}
+		req.Options = &pb.BulkCreateEdgesOptions{}
 	}
 
 	resp, err := s.ctx.DataClient.InsertEdges(ctx, req)

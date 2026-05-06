@@ -628,13 +628,17 @@ func insertConfigToQueryConfig(ic *types.InsertConfig) *types.QueryConfig {
 	return &qc
 }
 
-// InsertNodes inserts nodes using GQL INSERT syntax with RETURN clause.
+// InsertNodesGql inserts nodes using GQL INSERT syntax with RETURN clause.
 // GQL: INSERT (n0:Label {p1: v1}), (n1:Label {p2: v2}) RETURN n0, n1
 // When config.InsertType is InsertTypeOverwrite, uses INSERT OVERWRITE syntax.
 // If NodeData.ID is set (non-empty), includes it as _id property in the GQL.
 // config may be nil; the default is the session graph and InsertTypeNormal.
 // Returns the raw Response containing the inserted nodes in columns n0, n1, etc.
-func (c *Client) InsertNodes(ctx context.Context, nodes []types.NodeData, config *InsertConfig) (*Response, error) {
+//
+// NOTE: this is the GQL-emitter convenience helper added after 6.0.0.
+// The 6.0.0 method named InsertNodes (gRPC bulk-import path) is retained at
+// its original signature in client.go; do not confuse the two.
+func (c *Client) InsertNodesGql(ctx context.Context, nodes []types.NodeData, config *InsertConfig) (*Response, error) {
 	if len(nodes) == 0 {
 		return &Response{}, nil
 	}
@@ -670,29 +674,61 @@ func (c *Client) InsertNodes(ctx context.Context, nodes []types.NodeData, config
 		}
 	}
 
-	insertKeyword := "INSERT"
-	if config != nil && config.InsertType == types.InsertTypeOverwrite {
-		insertKeyword = "INSERT OVERWRITE"
-	}
+	insertKeyword := insertKeywordForType(config)
 	gql := insertKeyword + " " + strings.Join(parts, ", ") + " RETURN " + strings.Join(varNames, ", ")
 	return c.Gql(ctx, gql, insertConfigToQueryConfig(config))
 }
 
-// InsertEdges inserts edges using GQL INSERT syntax with RETURN clause.
-// Each edge is inserted individually using MATCH + INSERT to resolve node IDs.
-// GQL: MATCH (src WHERE id(src) = 'from'), (dst WHERE id(dst) = 'to') INSERT (src)-[e0:Label {p1: v1}]->(dst) RETURN e0
-// When config.InsertType is InsertTypeOverwrite, uses INSERT OVERWRITE syntax.
+// insertKeywordForType maps an *InsertConfig's InsertType to the GQL
+// keyword(s) that select the matching server-side semantics.
+//
+//   - nil config or InsertTypeNormal → "INSERT" (default; error on duplicate)
+//   - InsertTypeOverwrite            → "INSERT OVERWRITE" (replace on duplicate)
+//   - InsertTypeUpsert               → "UPSERT" (merge on duplicate)
+//
+// The two modes (Overwrite, Upsert) are distinct on existing rows; do
+// not assume one substitutes for the other. See types.InsertType docs.
+func insertKeywordForType(config *InsertConfig) string {
+	if config == nil {
+		return "INSERT"
+	}
+	switch config.InsertType {
+	case types.InsertTypeOverwrite:
+		return "INSERT OVERWRITE"
+	case types.InsertTypeUpsert:
+		return "UPSERT"
+	default:
+		return "INSERT"
+	}
+}
+
+// InsertEdgesGql inserts edges using GQL INSERT/UPSERT syntax with RETURN
+// clause. Each edge is inserted individually using MATCH + INSERT to
+// resolve node IDs:
+//
+//	MATCH (src WHERE id(src) = 'from'), (dst WHERE id(dst) = 'to')
+//	INSERT (src)-[e0:Label {p1: v1}]->(dst)
+//	RETURN e0
+//
+// When config.InsertType is:
+//   - InsertTypeNormal:    plain INSERT (error on duplicate `_id`).
+//   - InsertTypeOverwrite: INSERT OVERWRITE (REPLACE on duplicate).
+//   - InsertTypeUpsert:    UPSERT (MERGE on duplicate). Edge UPSERT
+//     requires EDGE_ID enabled on the target graph; the server returns
+//     a clear error when EDGE_ID is disabled.
+//
 // config may be nil; the default is the session graph and InsertTypeNormal.
 // Returns a merged Response containing all inserted edges in columns e0, e1, etc.
-func (c *Client) InsertEdges(ctx context.Context, edges []types.EdgeData, config *InsertConfig) (*Response, error) {
+//
+// NOTE: this is the GQL-emitter convenience helper added after 6.0.0.
+// The 6.0.0 method named InsertEdges (gRPC bulk-import path) is retained at
+// its original signature in client.go; do not confuse the two.
+func (c *Client) InsertEdgesGql(ctx context.Context, edges []types.EdgeData, config *InsertConfig) (*Response, error) {
 	if len(edges) == 0 {
 		return &Response{}, nil
 	}
 
-	insertKeyword := "INSERT"
-	if config != nil && config.InsertType == types.InsertTypeOverwrite {
-		insertKeyword = "INSERT OVERWRITE"
-	}
+	insertKeyword := insertKeywordForType(config)
 
 	qc := insertConfigToQueryConfig(config)
 

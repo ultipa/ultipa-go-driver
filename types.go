@@ -137,4 +137,5 @@ type InsertType = types.InsertType
 const (
 	InsertTypeNormal    = types.InsertTypeNormal
 	InsertTypeOverwrite = types.InsertTypeOverwrite
+	InsertTypeUpsert    = types.InsertTypeUpsert
 )

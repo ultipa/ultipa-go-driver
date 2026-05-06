@@ -29,16 +29,27 @@ type InsertConfig struct {
 	InsertType InsertType
 }
 
-// InsertNodesConfig represents configuration for inserting nodes.
+// InsertNodesConfig represents configuration for the InsertNodes RPC,
+// including bulk-import sessions.
+//
+// Mode selects duplicate-`_id` semantics. See InsertType docs (in
+// types/convenience.go) for the three values and their differences.
+// Defaults to InsertTypeNormal (zero value).
 type InsertNodesConfig struct {
-	Overwrite           bool   // Skip existence check and overwrite if node ID already exists
-	BulkImportSessionID string // Optional: bulk import session ID for auto-checkpoint
+	Mode                InsertType // Normal / Overwrite / Upsert
+	BulkImportSessionID string     // Optional: bulk import session ID for auto-checkpoint
 }
 
-// InsertEdgesConfig represents configuration for inserting edges.
+// InsertEdgesConfig represents configuration for the InsertEdges RPC,
+// including bulk-import sessions.
+//
+// See InsertNodesConfig for the Mode semantic split. Edge
+// InsertTypeOverwrite and InsertTypeUpsert require EDGE_ID enabled on
+// the target graph.
 type InsertEdgesConfig struct {
-	SkipInvalidNodes    bool   // Skip edges where source/target node doesn't exist
-	BulkImportSessionID string // Optional: bulk import session ID for auto-checkpoint
+	SkipInvalidNodes    bool       // Skip edges where source/target node doesn't exist
+	Mode                InsertType // Normal / Overwrite / Upsert
+	BulkImportSessionID string     // Optional: bulk import session ID for auto-checkpoint
 }
 
 // HealthWatcher watches the health status of a service.

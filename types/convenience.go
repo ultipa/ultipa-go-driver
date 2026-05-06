@@ -106,11 +106,25 @@ type GraphStats struct {
 }
 
 // InsertType controls the insert mode for GQL-based insert operations.
+//
+//   - InsertTypeNormal:    INSERT — error if `_id` already exists.
+//   - InsertTypeOverwrite: INSERT OVERWRITE — REPLACE existing entity
+//     wholesale on duplicate `_id`. Properties not in the write are LOST.
+//   - InsertTypeUpsert:    UPSERT — MERGE new properties into existing
+//     entity on duplicate `_id`. Properties not in the write are
+//     PRESERVED; properties in the write OVERWRITE existing values.
+//     Falls back to plain insert when no `_id` matches.
+//
+// Overwrite and Upsert are different semantics. Choose Upsert (merge)
+// for partial-update workloads where you don't want to lose existing
+// fields; choose Overwrite (replace) for known-clean re-ingest of an
+// entity's full state.
 type InsertType int
 
 const (
 	InsertTypeNormal    InsertType = 0
 	InsertTypeOverwrite InsertType = 1
+	InsertTypeUpsert    InsertType = 2
 )
 
 // InsertResponse represents the response for GQL-based insert operations.

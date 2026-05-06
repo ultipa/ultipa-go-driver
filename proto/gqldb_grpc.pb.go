@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.1
 // - protoc             v7.34.1
-// source: proto/gqldb.proto
+// source: gqldb.proto
 
 package proto
 
@@ -199,7 +199,7 @@ var SessionService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "proto/gqldb.proto",
+	Metadata: "gqldb.proto",
 }
 
 const (
@@ -427,7 +427,7 @@ var QueryService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "proto/gqldb.proto",
+	Metadata: "gqldb.proto",
 }
 
 const (
@@ -695,7 +695,7 @@ var DataService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "proto/gqldb.proto",
+	Metadata: "gqldb.proto",
 }
 
 const (
@@ -959,7 +959,7 @@ var GraphService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "proto/gqldb.proto",
+	Metadata: "gqldb.proto",
 }
 
 const (
@@ -1183,7 +1183,7 @@ var TransactionService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "proto/gqldb.proto",
+	Metadata: "gqldb.proto",
 }
 
 const (
@@ -1331,7 +1331,7 @@ var Health_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "proto/gqldb.proto",
+	Metadata: "gqldb.proto",
 }
 
 const (
@@ -1715,7 +1715,7 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "proto/gqldb.proto",
+	Metadata: "gqldb.proto",
 }
 
 const (
@@ -1979,5 +1979,5 @@ var BulkImportService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "proto/gqldb.proto",
+	Metadata: "gqldb.proto",
 }

@@ -12,6 +12,22 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// insertTypeToProto maps the public types.InsertType enum to the
+// proto-layer pb.InsertMode value. The two enums have aligned integer
+// values; this function exists to make the boundary explicit and to
+// default unknown values to NORMAL rather than silently round-tripping
+// out-of-range integers.
+func insertTypeToProto(t InsertType) pb.InsertMode {
+	switch t {
+	case InsertTypeOverwrite:
+		return pb.InsertMode_INSERT_MODE_OVERWRITE
+	case InsertTypeUpsert:
+		return pb.InsertMode_INSERT_MODE_UPSERT
+	default:
+		return pb.InsertMode_INSERT_MODE_NORMAL
+	}
+}
+
 // Client is the main entry point for interacting with GQLDB.
 type Client struct {
 	config    *Config
@@ -497,8 +513,12 @@ func (c *Client) WithTransaction(ctx context.Context, graphName string, readOnly
 // Data Service - Delegates to DataService
 // =============================================================================
 
-// InsertNodesBatchAuto inserts multiple nodes into a graph using gRPC bulk insert.
-func (c *Client) InsertNodesBatchAuto(ctx context.Context, graphName string, nodes []*NodeData, config *InsertNodesConfig) (*InsertNodesResult, error) {
+// InsertNodes inserts multiple nodes into a graph via the gRPC bulk-import RPC.
+// This is the original 6.0.0 signature; preserved so callers written against
+// 6.0.0 (e.g. gqldb-manager) keep compiling and running.
+//
+// For the GQL-emitter convenience helper added after 6.0.0, use InsertNodesGql.
+func (c *Client) InsertNodes(ctx context.Context, graphName string, nodes []*NodeData, config *InsertNodesConfig) (*InsertNodesResult, error) {
 	svcNodes := make([]*services.NodeData, len(nodes))
 	for i, n := range nodes {
 		svcNodes[i] = &services.NodeData{
@@ -509,12 +529,9 @@ func (c *Client) InsertNodesBatchAuto(ctx context.Context, graphName string, nod
 	}
 
 	// Convert config (create default if nil to avoid deprecated bulk operations error)
-	svcConfig := &services.InsertNodesConfig{
-		Overwrite:           false,
-		BulkImportSessionID: "",
-	}
+	svcConfig := &services.InsertNodesConfig{}
 	if config != nil {
-		svcConfig.Overwrite = config.Overwrite
+		svcConfig.Mode = insertTypeToProto(config.Mode)
 		svcConfig.BulkImportSessionID = config.BulkImportSessionID
 	}
 
@@ -531,11 +548,16 @@ func (c *Client) InsertNodesBatchAuto(ctx context.Context, graphName string, nod
 	}, nil
 }
 
-// InsertEdgesBatchAuto inserts multiple edges into a graph using gRPC bulk insert.
-func (c *Client) InsertEdgesBatchAuto(ctx context.Context, graphName string, edges []*EdgeData, config *InsertEdgesConfig) (*InsertEdgesResult, error) {
+// InsertEdges inserts multiple edges into a graph via the gRPC bulk-import RPC.
+// This is the original 6.0.0 signature; preserved so callers written against
+// 6.0.0 keep compiling and running.
+//
+// For the GQL-emitter convenience helper added after 6.0.0, use InsertEdgesGql.
+func (c *Client) InsertEdges(ctx context.Context, graphName string, edges []*EdgeData, config *InsertEdgesConfig) (*InsertEdgesResult, error) {
 	svcEdges := make([]*services.EdgeData, len(edges))
 	for i, e := range edges {
 		svcEdges[i] = &services.EdgeData{
+			ID:         e.ID,
 			Label:      e.Label,
 			From:       e.FromNodeID,
 			To:         e.ToNodeID,
@@ -544,12 +566,10 @@ func (c *Client) InsertEdgesBatchAuto(ctx context.Context, graphName string, edg
 	}
 
 	// Convert config (create default if nil to avoid deprecated bulk operations error)
-	svcConfig := &services.InsertEdgesConfig{
-		SkipInvalidNodes:    false,
-		BulkImportSessionID: "",
-	}
+	svcConfig := &services.InsertEdgesConfig{}
 	if config != nil {
 		svcConfig.SkipInvalidNodes = config.SkipInvalidNodes
+		svcConfig.Mode = insertTypeToProto(config.Mode)
 		svcConfig.BulkImportSessionID = config.BulkImportSessionID
 	}
 
@@ -563,6 +583,24 @@ func (c *Client) InsertEdgesBatchAuto(ctx context.Context, graphName string, edg
 		EdgeCount: result.EdgesCreated,
 		Message:   result.Message,
 	}, nil
+}
+
+// InsertNodesBatchAuto is a deprecated alias for InsertNodes; kept for
+// short-lived callers that adopted the post-6.0.0 rename. New code should
+// use InsertNodes directly.
+//
+// Deprecated: use InsertNodes.
+func (c *Client) InsertNodesBatchAuto(ctx context.Context, graphName string, nodes []*NodeData, config *InsertNodesConfig) (*InsertNodesResult, error) {
+	return c.InsertNodes(ctx, graphName, nodes, config)
+}
+
+// InsertEdgesBatchAuto is a deprecated alias for InsertEdges; kept for
+// short-lived callers that adopted the post-6.0.0 rename. New code should
+// use InsertEdges directly.
+//
+// Deprecated: use InsertEdges.
+func (c *Client) InsertEdgesBatchAuto(ctx context.Context, graphName string, edges []*EdgeData, config *InsertEdgesConfig) (*InsertEdgesResult, error) {
+	return c.InsertEdges(ctx, graphName, edges, config)
 }
 
 // DeleteNodes deletes nodes from a graph.

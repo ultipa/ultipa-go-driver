@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
 	"time"
 )
 
@@ -531,7 +532,15 @@ func decodePropertiesBinary(data []byte, offset int) (map[string]interface{}, in
 }
 
 // decodeNode decodes a node from binary format.
-// Format: [idLen:2][id][labelCount:2][labelLen:2][label]...[properties_binary]
+//
+// Wire format:
+//
+//	pre-6.1.147:  [idLen:2][id][labelCount:2][labelLen:2][label]...[properties_binary]
+//	6.1.147+:     ...[properties_binary][InternalID:8 LE uint64]
+//
+// The 8-byte InternalID trailer is read when present; absent on
+// pre-6.1.147 servers, in which case Node.UUID is left empty and
+// application code can fall back to Node.ID.
 func decodeNode(data []byte) *Node {
 	offset := 0
 
@@ -560,13 +569,17 @@ func decodeNode(data []byte) *Node {
 	}
 
 	// Decode properties
-	properties, _ := decodePropertiesBinary(data, offset)
+	properties, propsLen := decodePropertiesBinary(data, offset)
+	offset += propsLen
 
-	return &Node{ID: id, Labels: labels, Properties: properties}
+	// Decode optional InternalID trailer (6.1.147+ wire format).
+	uuid := decodeInternalIDTrailer(data, offset)
+
+	return &Node{ID: id, UUID: uuid, Labels: labels, Properties: properties}
 }
 
-// decodeEdge decodes an edge from binary format.
-// Format: [idLen:2][id][labelLen:2][label][fromLen:2][from][toLen:2][to][properties_binary]
+// decodeEdge decodes an edge from binary format. See decodeNode for
+// the InternalID trailer semantics.
 func decodeEdge(data []byte) *Edge {
 	offset := 0
 
@@ -594,9 +607,25 @@ func decodeEdge(data []byte) *Edge {
 	}
 	offset += toLen
 
-	properties, _ := decodePropertiesBinary(data, offset)
+	properties, propsLen := decodePropertiesBinary(data, offset)
+	offset += propsLen
 
-	return &Edge{ID: id, Label: label, FromNodeID: fromNodeID, ToNodeID: toNodeID, Properties: properties}
+	uuid := decodeInternalIDTrailer(data, offset)
+
+	return &Edge{ID: id, UUID: uuid, Label: label, FromNodeID: fromNodeID, ToNodeID: toNodeID, Properties: properties}
+}
+
+// decodeInternalIDTrailer reads the 8-byte little-endian uint64
+// InternalID emitted by gqldb 6.1.147+ servers at the tail of every
+// encoded node/edge payload. Returns the value formatted as a decimal
+// string. Returns "" when the trailer is missing (pre-6.1.147 wire
+// format) so application code can fall back to `_id`.
+func decodeInternalIDTrailer(data []byte, offset int) string {
+	if offset+8 > len(data) {
+		return ""
+	}
+	id := binary.LittleEndian.Uint64(data[offset : offset+8])
+	return strconv.FormatUint(id, 10)
 }
 
 // decodePath decodes a path from binary format.

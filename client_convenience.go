@@ -1217,8 +1217,13 @@ func formatGqlValue(v interface{}) string {
 	}
 	switch val := v.(type) {
 	case string:
-		// Escape single quotes in strings
-		escaped := strings.ReplaceAll(val, "'", "\\'")
+		// Escape backslash FIRST, then single quote — order matters.
+		// Without backslash escaping, values containing `\` (e.g. Windows
+		// paths "NT AUTHORITY\\ SYSTEM") silently corrupt or trigger
+		// "unterminated string literal" parse errors when the lone
+		// backslash interacts with the closing `'`.
+		escaped := strings.ReplaceAll(val, "\\", "\\\\")
+		escaped = strings.ReplaceAll(escaped, "'", "\\'")
 		return "'" + escaped + "'"
 	case bool:
 		if val {

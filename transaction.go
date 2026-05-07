@@ -14,6 +14,11 @@ type Transaction struct {
 	ReadOnly  bool
 	CreatedAt time.Time
 	Timeout   time.Duration
+	// ClientSessionID is the stable per-client logical session id surfaced
+	// under the transaction-branch model. Distinct from SessionID (the
+	// legacy uint64 from Login). Always populated by the driver. See
+	// TRANSACTIONS_DRIVER_GUIDE.md §2.0–2.1.
+	ClientSessionID string
 	mu        sync.RWMutex
 	committed bool
 	rolledBack bool

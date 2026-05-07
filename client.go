@@ -2,6 +2,8 @@ package gqldb
 
 import (
 	"context"
+	cryptoRand "crypto/rand"
+	"fmt"
 	"strings"
 	"time"
 
@@ -40,6 +42,11 @@ type Client struct {
 	storedPassword string
 	storedGraph   string
 
+	// Stable per-client logical session id surfaced under the
+	// transaction-branch model (see TRANSACTIONS_DRIVER_GUIDE.md §2.0–2.1).
+	// Initialized to a UUID v4 hex; users can override via Config.SessionID.
+	clientSessionID string
+
 	// gRPC service clients
 	sessionClient     pb.SessionServiceClient
 	queryClient       pb.QueryServiceClient
@@ -72,11 +79,17 @@ func NewClient(config *Config) (*Client, error) {
 		return nil, err
 	}
 
+	csid := config.SessionID
+	if csid == "" {
+		csid = newClientSessionID()
+	}
+
 	client := &Client{
-		config:    config,
-		pool:      pool,
-		sessions:  NewSessionManager(),
-		txManager: NewTransactionManager(),
+		config:          config,
+		pool:            pool,
+		sessions:        NewSessionManager(),
+		txManager:       NewTransactionManager(),
+		clientSessionID: csid,
 	}
 
 	// Initialize gRPC clients and services
@@ -115,8 +128,10 @@ func (c *Client) initClients(conn *grpc.ClientConn) {
 		HealthClient:      c.healthClient,
 		AdminClient:       c.adminClient,
 		BulkImportClient:  c.bulkImportClient,
-		GetSessionID:      func() uint64 { return c.sessions.GetSessionID() },
-		GetDefaultGraph:   func() string { return c.sessions.GetDefaultGraph() },
+		GetSessionID:        func() uint64 { return c.sessions.GetSessionID() },
+		GetServerVersion:    func() string { return c.sessions.GetServerVersion() },
+		GetClientSessionID:  func() string { return c.clientSessionID },
+		GetDefaultGraph:     func() string { return c.sessions.GetDefaultGraph() },
 		GetTimeout:        func() int { return c.config.TimeoutSeconds() },
 		SetDefaultGraph:   func(name string) { c.sessions.SetDefaultGraph(name) },
 		UpdateActivity:    func() { c.sessions.UpdateActivity() },
@@ -440,7 +455,36 @@ func (c *Client) BeginTransaction(ctx context.Context, graphName string, readOnl
 
 	// Create transaction using transaction manager
 	tx := c.txManager.Begin(result.TransactionID, result.SessionID, result.GraphName, result.ReadOnly, result.Timeout)
+	// Surface the per-client logical session id on the returned tx
+	// (transaction-branch ergonomic, see TRANSACTIONS_DRIVER_GUIDE.md).
+	tx.ClientSessionID = c.clientSessionID
 	return tx, nil
+}
+
+// ClientSessionID returns the stable per-client logical session id surfaced
+// under the transaction-branch model. The same id is attached to every
+// Transaction returned by BeginTransaction.
+func (c *Client) ClientSessionID() string {
+	return c.clientSessionID
+}
+
+// newClientSessionID generates a UUID v4 hex string for use as the
+// per-client logical session id. Used at NewClient time when Config.SessionID
+// is not provided. Falls back to time-based hex if crypto/rand fails (very
+// unlikely; the fallback only ensures NewClient never errors on this).
+func newClientSessionID() string {
+	b := make([]byte, 16)
+	if _, err := cryptoRand.Read(b); err != nil {
+		// Extremely unlikely; emit a non-cryptographic fallback rather than
+		// fail NewClient. Used only as the default when the user did not set
+		// Config.SessionID.
+		return fmt.Sprintf("fallback-%d", time.Now().UnixNano())
+	}
+	// RFC 4122 v4 markers — actual values not strictly required for our
+	// purposes (we use it as an opaque string), but make it look like a UUID.
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x", b)
 }
 
 // Commit commits a transaction.
@@ -507,6 +551,62 @@ func (c *Client) WithTransaction(ctx context.Context, graphName string, readOnly
 
 	_, err = c.Commit(ctx, tx.ID)
 	return err
+}
+
+// =============================================================================
+// Admin DDL surface (transaction-branch)
+// =============================================================================
+
+// ShowTransactions returns active transactions via the GQL admin DDL
+// `SHOW TRANSACTIONS`. Each row mirrors the 5-column server-side schema:
+// TransactionID / Status / ReadOnly / StartTime / SessionID.
+//
+// SessionID is empty unless the server has auto-derived one from peer info
+// or the driver explicitly surfaces `x-ultipa-session-id` metadata.
+//
+// Distinct from ListTransactions which uses the legacy gRPC.
+func (c *Client) ShowTransactions(ctx context.Context) ([]*TransactionRow, error) {
+	resp, err := c.Gql(ctx, "SHOW TRANSACTIONS", nil)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]*TransactionRow, 0, len(resp.Rows))
+	for _, row := range resp.Rows {
+		v, _ := resp.GetByName(row, "transaction_id")
+		txID, _ := v.(string)
+		v, _ = resp.GetByName(row, "status")
+		stat, _ := v.(string)
+		v, _ = resp.GetByName(row, "read_only")
+		ro, _ := v.(bool)
+		v, _ = resp.GetByName(row, "start_time")
+		st, _ := v.(string)
+		v, _ = resp.GetByName(row, "session_id")
+		sid, _ := v.(string)
+		rows = append(rows, &TransactionRow{
+			TransactionID: txID,
+			Status:        stat,
+			ReadOnly:      ro,
+			StartTime:     st,
+			SessionID:     sid,
+		})
+	}
+	return rows, nil
+}
+
+// KillTransaction rolls back a single transaction by id via
+// `KILL TRANSACTION '<id>'`. The id is the string form surfaced by
+// ShowTransactions (e.g. "tx_a396c531-..."), distinct from the uint64
+// returned by BeginTransaction.
+func (c *Client) KillTransaction(ctx context.Context, transactionID string) (*Response, error) {
+	escaped := strings.ReplaceAll(transactionID, "'", "''")
+	return c.Gql(ctx, "KILL TRANSACTION '"+escaped+"'", nil)
+}
+
+// ResetTransactions rolls back every active transaction via
+// `RESET TRANSACTIONS`. Admin-only; intended as an escape hatch when an
+// orphan tx blocks new BEGINs.
+func (c *Client) ResetTransactions(ctx context.Context) (*Response, error) {
+	return c.Gql(ctx, "RESET TRANSACTIONS", nil)
 }
 
 // =============================================================================

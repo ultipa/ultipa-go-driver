@@ -20,6 +20,19 @@ type TransactionInfo struct {
 	InternalTxID  string
 }
 
+// TransactionRow is one row from the GQL admin DDL `SHOW TRANSACTIONS`
+// (added by transaction-branch). SessionID is empty when the server has
+// not auto-derived one from peer info and the driver has not surfaced an
+// explicit `x-ultipa-session-id` metadata header — see
+// TRANSACTIONS_DRIVER_GUIDE.md §3.1.
+type TransactionRow struct {
+	TransactionID string // 'tx_<uuid>' form
+	Status        string // 'active' / etc
+	ReadOnly      bool
+	StartTime     string // ISO 8601
+	SessionID     string
+}
+
 // ASTCacheStats contains AST cache statistics.
 type ASTCacheStats struct {
 	Hits      uint64

@@ -99,6 +99,7 @@ type ExportedEdge = types.ExportedEdge
 // Re-export metadata types
 type GraphInfo = types.GraphInfo
 type TransactionInfo = types.TransactionInfo
+type TransactionRow = types.TransactionRow
 type ASTCacheStats = types.ASTCacheStats
 type PlanCacheStats = types.PlanCacheStats
 type CacheStats = types.CacheStats

@@ -48,6 +48,14 @@ type Config struct {
 	// RetryDelay is the delay between retries.
 	// Default is 100ms.
 	RetryDelay time.Duration
+
+	// SessionID is an optional stable per-client logical session id used
+	// by the transaction-branch model (sent as `x-ultipa-session-id`
+	// metadata when §2.1 opt-in is enabled in TRANSACTIONS_DRIVER_GUIDE.md).
+	// Empty string (default) means the driver auto-generates one at
+	// NewClient time. Override only when you need a stable id across
+	// reconnects or for cross-channel session continuity.
+	SessionID string
 }
 
 // DefaultConfig returns a Config with default values.

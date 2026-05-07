@@ -2,10 +2,76 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"regexp"
+	"strconv"
 
 	pb "github.com/ultipa/ultipa-go-driver/v6/proto"
 )
+
+// upsertMinVersion is the minimum server version that supports
+// `InsertMode.UPSERT` on the bulk-import RPCs. Older servers ignore the
+// unknown enum value and silently downgrade to Normal, surfacing a confusing
+// "duplicate _id" error on the very write the user meant to merge.
+//
+// See `GQLDB-6.1.149-DRIVER-AND-TEST-HANDOFF-2026-05-05.md` (Test plan section D).
+var upsertMinVersion = [3]int{6, 1, 149}
+
+var versionRe = regexp.MustCompile(`(\d+)\.(\d+)\.(\d+)`)
+
+// parseVersion extracts the leading major.minor.patch from a server version
+// string. Returns [0,0,0] when the input is empty or does not match —
+// treated as "unknown / pre-6.1.149" by the gate.
+func parseVersion(s string) [3]int {
+	m := versionRe.FindStringSubmatch(s)
+	if len(m) != 4 {
+		return [3]int{0, 0, 0}
+	}
+	a, _ := strconv.Atoi(m[1])
+	b, _ := strconv.Atoi(m[2])
+	c, _ := strconv.Atoi(m[3])
+	return [3]int{a, b, c}
+}
+
+// versionGTE reports whether `actual` is >= `required` componentwise.
+func versionGTE(actual, required [3]int) bool {
+	for i := 0; i < 3; i++ {
+		if actual[i] != required[i] {
+			return actual[i] > required[i]
+		}
+	}
+	return true
+}
+
+// requireUpsertSupport raises an error if `mode` is UPSERT and the
+// connected server is older than 6.1.149.
+//
+// Server >= 6.1.154 reports the real version in
+// LoginResponse.server_version (e.g. "gqldb-grpc 6.1.154 ..."). Older
+// servers either return a placeholder "1.0.0" or leave the field empty —
+// both are now treated as "definitely older than 6.1.149" and rejected.
+// (Earlier versions of this gate let those cases pass through; that
+// workaround was removed once 6.1.154+ started populating the field
+// correctly.)
+func (s *DataService) requireUpsertSupport(mode pb.InsertMode) error {
+	if mode != pb.InsertMode_INSERT_MODE_UPSERT {
+		return nil
+	}
+	var serverVer string
+	if s.ctx != nil && s.ctx.GetServerVersion != nil {
+		serverVer = s.ctx.GetServerVersion()
+	}
+	if !versionGTE(parseVersion(serverVer), upsertMinVersion) {
+		got := serverVer
+		if got == "" {
+			got = "unknown"
+		}
+		return fmt.Errorf("InsertMode.UPSERT requires server >= %d.%d.%d, connected server reports %s",
+			upsertMinVersion[0], upsertMinVersion[1], upsertMinVersion[2], got)
+	}
+	return nil
+}
 
 // DataService handles node/edge insert/delete/export operations.
 type DataService struct {
@@ -76,6 +142,12 @@ type InsertEdgesConfig struct {
 func (s *DataService) InsertNodes(ctx context.Context, graphName string, nodes []*NodeData, config *InsertNodesConfig,
 	convertProps func(map[string]interface{}) (map[string]*pb.TypedValue, error)) (*InsertNodesResult, error) {
 
+	if config != nil {
+		if err := s.requireUpsertSupport(config.Mode); err != nil {
+			return nil, err
+		}
+	}
+
 	ctx = s.ctx.WithSessionMetadata(ctx)
 
 	pbNodes := make([]*pb.NodeData, len(nodes))
@@ -127,6 +199,12 @@ func (s *DataService) InsertNodes(ctx context.Context, graphName string, nodes [
 // InsertEdges inserts multiple edges into a graph.
 func (s *DataService) InsertEdges(ctx context.Context, graphName string, edges []*EdgeData, config *InsertEdgesConfig,
 	convertProps func(map[string]interface{}) (map[string]*pb.TypedValue, error)) (*InsertEdgesResult, error) {
+
+	if config != nil {
+		if err := s.requireUpsertSupport(config.Mode); err != nil {
+			return nil, err
+		}
+	}
 
 	ctx = s.ctx.WithSessionMetadata(ctx)
 

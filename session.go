@@ -88,6 +88,19 @@ func (m *SessionManager) GetSessionID() uint64 {
 	return m.session.ID
 }
 
+// GetServerVersion returns the version string reported by the server at
+// login time, or "" if not logged in. Used for client-side feature gates
+// (e.g. UPSERT requires server >= 6.1.149).
+func (m *SessionManager) GetServerVersion() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if m.session == nil {
+		return ""
+	}
+	return m.session.ServerVersion
+}
+
 // IsLoggedIn returns true if there is an active session.
 func (m *SessionManager) IsLoggedIn() bool {
 	m.mu.RLock()

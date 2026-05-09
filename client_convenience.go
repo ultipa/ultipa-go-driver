@@ -1217,13 +1217,14 @@ func formatGqlValue(v interface{}) string {
 	}
 	switch val := v.(type) {
 	case string:
-		// Escape backslash FIRST, then single quote — order matters.
-		// Without backslash escaping, values containing `\` (e.g. Windows
-		// paths "NT AUTHORITY\\ SYSTEM") silently corrupt or trigger
-		// "unterminated string literal" parse errors when the lone
-		// backslash interacts with the closing `'`.
+		// Order matters: backslash FIRST, then everything else.
+		// Server GQL parser uses C-style escapes; literal LF / CR inside
+		// a `'...'` string are NOT accepted by the server lexer and
+		// surface as "unterminated string literal" parse errors.
 		escaped := strings.ReplaceAll(val, "\\", "\\\\")
 		escaped = strings.ReplaceAll(escaped, "'", "\\'")
+		escaped = strings.ReplaceAll(escaped, "\n", "\\n")
+		escaped = strings.ReplaceAll(escaped, "\r", "\\r")
 		return "'" + escaped + "'"
 	case bool:
 		if val {

@@ -15,6 +15,14 @@ type Response struct {
 	HasMore      bool
 	Warnings     []string
 	RowsAffected int64
+	// CurrentGraph is the session's current graph after this RPC
+	// executed, as authoritatively reported by the server. Always
+	// populated on success against new servers (covers single/compound
+	// USE GRAPH at any position, last-write-wins). Empty when running
+	// against a pre-fix server, in which case the driver falls back to
+	// its USE GRAPH text-parsing path internally to keep the local
+	// session.DefaultGraph cache in sync.
+	CurrentGraph string
 }
 
 // Row represents a single row in the query result.

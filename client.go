@@ -1189,11 +1189,13 @@ func (c *Client) convertFromServiceResponse(svcResp *services.Response) *Respons
 	}
 
 	return &Response{
-		Columns:  svcResp.Columns,
-		Rows:     rows,
-		RowCount: svcResp.RowCount,
-		HasMore:  svcResp.HasMore,
-		Warnings: svcResp.Warnings,
+		Columns:      svcResp.Columns,
+		Rows:         rows,
+		RowCount:     svcResp.RowCount,
+		HasMore:      svcResp.HasMore,
+		Warnings:     svcResp.Warnings,
+		RowsAffected: svcResp.RowsAffected,
+		CurrentGraph: svcResp.CurrentGraph,
 	}
 }
 

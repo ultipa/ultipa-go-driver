@@ -42,11 +42,20 @@ func (s *SessionService) Login(ctx context.Context, username, password, defaultG
 		return nil, err
 	}
 
+	// Prefer the server's authoritative LoginResponse.current_graph
+	// (new servers always populate it — equals the validated
+	// req.default_graph or empty). Falls back to the request value for
+	// older servers that don't populate the field.
+	dg := resp.CurrentGraph
+	if dg == "" {
+		dg = defaultGraph
+	}
+
 	return &Session{
 		ID:             resp.SessionId,
 		ServerVersion:  resp.ServerVersion,
 		Roles:          resp.Roles,
-		DefaultGraph:   defaultGraph,
+		DefaultGraph:   dg,
 		IsCluster:      resp.IsCluster,
 		ClusterID:      resp.ClusterId,
 		PartitionCount: resp.PartitionCount,

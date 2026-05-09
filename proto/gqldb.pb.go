@@ -607,8 +607,19 @@ type LoginResponse struct {
 	IsCluster      bool   `protobuf:"varint,10,opt,name=is_cluster,json=isCluster,proto3" json:"is_cluster,omitempty"`
 	ClusterId      string `protobuf:"bytes,11,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
 	PartitionCount int32  `protobuf:"varint,12,opt,name=partition_count,json=partitionCount,proto3" json:"partition_count,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Capability tokens advertising supported features. Drivers test for
+	// membership instead of parsing server_version. Tokens are stable
+	// snake_case identifiers; older servers omit this field, drivers must
+	// treat the empty case as "no capabilities advertised". See
+	// server_bugs_open20.md #6.
+	Capabilities []string `protobuf:"bytes,20,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	// Session's current graph immediately after Login. Equals
+	// req.default_graph when supplied (and validated), otherwise empty.
+	// Lets new drivers seed their local "current graph" cache without a
+	// follow-up USE GRAPH round-trip. Old servers leave this empty.
+	CurrentGraph  string `protobuf:"bytes,21,opt,name=current_graph,json=currentGraph,proto3" json:"current_graph,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *LoginResponse) Reset() {
@@ -681,6 +692,20 @@ func (x *LoginResponse) GetPartitionCount() int32 {
 		return x.PartitionCount
 	}
 	return 0
+}
+
+func (x *LoginResponse) GetCapabilities() []string {
+	if x != nil {
+		return x.Capabilities
+	}
+	return nil
+}
+
+func (x *LoginResponse) GetCurrentGraph() string {
+	if x != nil {
+		return x.CurrentGraph
+	}
+	return ""
 }
 
 type LogoutRequest struct {
@@ -944,13 +969,23 @@ func (x *GqlRequest) GetMaxPathResults() int64 {
 }
 
 type GqlResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Columns       []string               `protobuf:"bytes,1,rep,name=columns,proto3" json:"columns,omitempty"`
-	Rows          []*Row                 `protobuf:"bytes,2,rep,name=rows,proto3" json:"rows,omitempty"`
-	RowCount      int64                  `protobuf:"varint,3,opt,name=row_count,json=rowCount,proto3" json:"row_count,omitempty"`
-	HasMore       bool                   `protobuf:"varint,4,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
-	Warnings      []string               `protobuf:"bytes,5,rep,name=warnings,proto3" json:"warnings,omitempty"`
-	RowsAffected  int64                  `protobuf:"varint,6,opt,name=rows_affected,json=rowsAffected,proto3" json:"rows_affected,omitempty"` // For DML operations (INSERT/UPDATE/DELETE)
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Columns      []string               `protobuf:"bytes,1,rep,name=columns,proto3" json:"columns,omitempty"`
+	Rows         []*Row                 `protobuf:"bytes,2,rep,name=rows,proto3" json:"rows,omitempty"`
+	RowCount     int64                  `protobuf:"varint,3,opt,name=row_count,json=rowCount,proto3" json:"row_count,omitempty"`
+	HasMore      bool                   `protobuf:"varint,4,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
+	Warnings     []string               `protobuf:"bytes,5,rep,name=warnings,proto3" json:"warnings,omitempty"`
+	RowsAffected int64                  `protobuf:"varint,6,opt,name=rows_affected,json=rowsAffected,proto3" json:"rows_affected,omitempty"` // For DML operations (INSERT/UPDATE/DELETE)
+	// Session's current graph after this query has executed. Always
+	// populated on success; reflects the engine's view (covers
+	// single/compound USE GRAPH at any position, last-write-wins).
+	// Empty means "no graph selected" (e.g. fresh session, or
+	// current graph was DROPPed). Drivers update their local cache
+	// unconditionally on every successful Gql RPC. Old servers leave
+	// this empty; drivers fall back to text parsing in that case.
+	// Streaming GqlStream populates only on the final batch
+	// (has_more=false); intermediate batches leave it empty.
+	CurrentGraph  string `protobuf:"bytes,7,opt,name=current_graph,json=currentGraph,proto3" json:"current_graph,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1025,6 +1060,13 @@ func (x *GqlResponse) GetRowsAffected() int64 {
 		return x.RowsAffected
 	}
 	return 0
+}
+
+func (x *GqlResponse) GetCurrentGraph() string {
+	if x != nil {
+		return x.CurrentGraph
+	}
+	return ""
 }
 
 type ExplainResponse struct {
@@ -4885,8 +4927,10 @@ type MemoryMetrics struct {
 	HeapAlloc  uint64 `protobuf:"varint,2,opt,name=heap_alloc,json=heapAlloc,proto3" json:"heap_alloc,omitempty"`      // Heap bytes allocated and in use
 	HeapSys    uint64 `protobuf:"varint,3,opt,name=heap_sys,json=heapSys,proto3" json:"heap_sys,omitempty"`            // Heap bytes obtained from OS
 	StackInUse uint64 `protobuf:"varint,4,opt,name=stack_in_use,json=stackInUse,proto3" json:"stack_in_use,omitempty"` // Stack bytes in use
+	TotalAlloc uint64 `protobuf:"varint,5,opt,name=total_alloc,json=totalAlloc,proto3" json:"total_alloc,omitempty"`   // Cumulative bytes allocated (monotonic)
+	NumGc      uint32 `protobuf:"varint,6,opt,name=num_gc,json=numGc,proto3" json:"num_gc,omitempty"`                  // Number of completed GC cycles
 	// System memory
-	SystemTotal       uint64  `protobuf:"varint,5,opt,name=system_total,json=systemTotal,proto3" json:"system_total,omitempty"`                       // Total system memory in bytes
+	SystemTotal       uint64  `protobuf:"varint,7,opt,name=system_total,json=systemTotal,proto3" json:"system_total,omitempty"`                       // Total physical memory in bytes
 	SystemAvailable   uint64  `protobuf:"varint,8,opt,name=system_available,json=systemAvailable,proto3" json:"system_available,omitempty"`           // Available memory in bytes
 	SystemUsed        uint64  `protobuf:"varint,9,opt,name=system_used,json=systemUsed,proto3" json:"system_used,omitempty"`                          // Used memory in bytes
 	SystemUsedPercent float64 `protobuf:"fixed64,10,opt,name=system_used_percent,json=systemUsedPercent,proto3" json:"system_used_percent,omitempty"` // System memory usage percent
@@ -4948,6 +4992,20 @@ func (x *MemoryMetrics) GetHeapSys() uint64 {
 func (x *MemoryMetrics) GetStackInUse() uint64 {
 	if x != nil {
 		return x.StackInUse
+	}
+	return 0
+}
+
+func (x *MemoryMetrics) GetTotalAlloc() uint64 {
+	if x != nil {
+		return x.TotalAlloc
+	}
+	return 0
+}
+
+func (x *MemoryMetrics) GetNumGc() uint32 {
+	if x != nil {
+		return x.NumGc
 	}
 	return 0
 }
@@ -5210,7 +5268,7 @@ const file_gqldb_proto_rawDesc = "" +
 	"\fLoginRequest\x12\x1a\n" +
 	"\busername\x18\x01 \x01(\tR\busername\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\x12#\n" +
-	"\rdefault_graph\x18\x03 \x01(\tR\fdefaultGraph\"\xd2\x01\n" +
+	"\rdefault_graph\x18\x03 \x01(\tR\fdefaultGraph\"\x9b\x02\n" +
 	"\rLoginResponse\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\x04R\tsessionId\x12%\n" +
@@ -5221,7 +5279,9 @@ const file_gqldb_proto_rawDesc = "" +
 	" \x01(\bR\tisCluster\x12\x1d\n" +
 	"\n" +
 	"cluster_id\x18\v \x01(\tR\tclusterId\x12'\n" +
-	"\x0fpartition_count\x18\f \x01(\x05R\x0epartitionCount\"\x0f\n" +
+	"\x0fpartition_count\x18\f \x01(\x05R\x0epartitionCount\x12\"\n" +
+	"\fcapabilities\x18\x14 \x03(\tR\fcapabilities\x12#\n" +
+	"\rcurrent_graph\x18\x15 \x01(\tR\fcurrentGraph\"\x0f\n" +
 	"\rLogoutRequest\"*\n" +
 	"\x0eLogoutResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\"\r\n" +
@@ -5242,7 +5302,7 @@ const file_gqldb_proto_rawDesc = "" +
 	"\x0etransaction_id\x18\x05 \x01(\x04R\rtransactionId\x12\x18\n" +
 	"\atimeout\x18\x06 \x01(\x05R\atimeout\x12\x1b\n" +
 	"\tread_only\x18\a \x01(\bR\breadOnly\x12(\n" +
-	"\x10max_path_results\x18\b \x01(\x03R\x0emaxPathResults\"\xc0\x01\n" +
+	"\x10max_path_results\x18\b \x01(\x03R\x0emaxPathResults\"\xe5\x01\n" +
 	"\vGqlResponse\x12\x18\n" +
 	"\acolumns\x18\x01 \x03(\tR\acolumns\x12\x1e\n" +
 	"\x04rows\x18\x02 \x03(\v2\n" +
@@ -5250,7 +5310,8 @@ const file_gqldb_proto_rawDesc = "" +
 	"\trow_count\x18\x03 \x01(\x03R\browCount\x12\x19\n" +
 	"\bhas_more\x18\x04 \x01(\bR\ahasMore\x12\x1a\n" +
 	"\bwarnings\x18\x05 \x03(\tR\bwarnings\x12#\n" +
-	"\rrows_affected\x18\x06 \x01(\x03R\frowsAffected\"%\n" +
+	"\rrows_affected\x18\x06 \x01(\x03R\frowsAffected\x12#\n" +
+	"\rcurrent_graph\x18\a \x01(\tR\fcurrentGraph\"%\n" +
 	"\x0fExplainResponse\x12\x12\n" +
 	"\x04plan\x18\x01 \x01(\tR\x04plan\"+\n" +
 	"\x0fProfileResponse\x12\x18\n" +
@@ -5551,7 +5612,7 @@ const file_gqldb_proto_rawDesc = "" +
 	"CpuMetrics\x12'\n" +
 	"\x0fprocess_percent\x18\x01 \x01(\x01R\x0eprocessPercent\x12%\n" +
 	"\x0esystem_percent\x18\x02 \x01(\x01R\rsystemPercent\x12\x1b\n" +
-	"\tnum_cores\x18\x03 \x01(\x05R\bnumCores\"\xab\x02\n" +
+	"\tnum_cores\x18\x03 \x01(\x05R\bnumCores\"\xe3\x02\n" +
 	"\rMemoryMetrics\x12\x1f\n" +
 	"\vprocess_rss\x18\x01 \x01(\x04R\n" +
 	"processRss\x12\x1d\n" +
@@ -5559,8 +5620,11 @@ const file_gqldb_proto_rawDesc = "" +
 	"heap_alloc\x18\x02 \x01(\x04R\theapAlloc\x12\x19\n" +
 	"\bheap_sys\x18\x03 \x01(\x04R\aheapSys\x12 \n" +
 	"\fstack_in_use\x18\x04 \x01(\x04R\n" +
-	"stackInUse\x12!\n" +
-	"\fsystem_total\x18\x05 \x01(\x04R\vsystemTotal\x12)\n" +
+	"stackInUse\x12\x1f\n" +
+	"\vtotal_alloc\x18\x05 \x01(\x04R\n" +
+	"totalAlloc\x12\x15\n" +
+	"\x06num_gc\x18\x06 \x01(\rR\x05numGc\x12!\n" +
+	"\fsystem_total\x18\a \x01(\x04R\vsystemTotal\x12)\n" +
 	"\x10system_available\x18\b \x01(\x04R\x0fsystemAvailable\x12\x1f\n" +
 	"\vsystem_used\x18\t \x01(\x04R\n" +
 	"systemUsed\x12.\n" +
@@ -5690,7 +5754,7 @@ const file_gqldb_proto_rawDesc = "" +
 	"Checkpoint\x12\x18.gqldb.CheckpointRequest\x1a\x19.gqldb.CheckpointResponse\x12J\n" +
 	"\rEndBulkImport\x12\x1b.gqldb.EndBulkImportRequest\x1a\x1c.gqldb.EndBulkImportResponse\x12P\n" +
 	"\x0fAbortBulkImport\x12\x1d.gqldb.AbortBulkImportRequest\x1a\x1e.gqldb.AbortBulkImportResponse\x12\\\n" +
-	"\x13GetBulkImportStatus\x12!.gqldb.GetBulkImportStatusRequest\x1a\".gqldb.GetBulkImportStatusResponseB'Z%github.com/zhangjsff/gqldb-grpc/protob\x06proto3"
+	"\x13GetBulkImportStatus\x12!.gqldb.GetBulkImportStatusRequest\x1a\".gqldb.GetBulkImportStatusResponseB5Z%github.com/zhangjsff/gqldb-grpc/proto\xaa\x02\vGqldb.Protob\x06proto3"
 
 var (
 	file_gqldb_proto_rawDescOnce sync.Once

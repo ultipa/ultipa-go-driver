@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"io"
+	"regexp"
 	"strings"
 	"time"
 
@@ -10,6 +11,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+// useGraphRE matches a SINGLE `USE GRAPH <ident>` statement (case-insensitive)
+// with optional trailing whitespace and semicolons. Compound queries do not
+// match — see comment in (*QueryService).Gql below.
+var useGraphRE = regexp.MustCompile(`(?i)^\s*USE\s+GRAPH\s+(\S+?)\s*;*\s*$`)
 
 // QueryService handles query execution operations.
 type QueryService struct {
@@ -48,6 +54,13 @@ type Response struct {
 	HasMore      bool
 	Warnings     []string
 	RowsAffected int64
+	// CurrentGraph is the session's current graph after this RPC
+	// executed, as authoritatively reported by the server. Always
+	// populated on success against new servers (covers single/compound
+	// USE GRAPH at any position, last-write-wins). Empty when running
+	// against a pre-fix server, which the driver detects to fall back
+	// to its USE GRAPH text-parsing path.
+	CurrentGraph string
 }
 
 // Row represents a result row (mirrors main package).
@@ -89,12 +102,49 @@ func (s *QueryService) Gql(ctx context.Context, query string, config *QueryConfi
 
 	s.ctx.UpdateActivity()
 
-	// Update default graph if the query is a USE GRAPH statement
-	stripped := strings.TrimSpace(query)
-	if strings.HasPrefix(strings.ToUpper(stripped), "USE GRAPH") {
-		newGraph := strings.TrimSpace(strings.TrimRight(strings.TrimSpace(stripped[len("USE GRAPH"):]), ";"))
-		if newGraph != "" {
-			s.ctx.SetDefaultGraph(newGraph)
+	// Phase 2 dual-source cache update: prefer the server's
+	// authoritative `current_graph` (covers compound queries, multiple
+	// embedded `USE GRAPH`, and last-write-wins) and fall back to the
+	// strict client-side regex for older servers that don't populate
+	// the field. The regex stays in place until the minimum-supported
+	// server version bumps to one that always populates current_graph
+	// (Phase 3, regex deleted at next major).
+	//
+	// Per the server contract, an empty `current_graph` against a
+	// req.GraphName-only query (no session in flight) is also valid —
+	// e.g. unauthenticated/no-RBAC mode where the engine has no
+	// session-scoped notion of "current graph". In that case the regex
+	// path still does the right thing.
+	if resp.CurrentGraph != "" {
+		s.ctx.SetDefaultGraph(resp.CurrentGraph)
+	} else if m := useGraphRE.FindStringSubmatch(query); m != nil {
+		// Compound queries that merely *start* with `USE GRAPH`
+		// (e.g. `USE GRAPH g1; SHOW EDGE_ID STATUS`) must NOT poison
+		// the default-graph state — the previous prefix-match logic
+		// captured everything after `USE GRAPH` (mid-string semicolons
+		// / newlines kept), wrote that as the graph name, and broke
+		// every subsequent gql() call with INVALID_ARGUMENT once the
+		// poisoned name was sent in the gRPC `graph_name` field.
+		s.ctx.SetDefaultGraph(m[1])
+	} else {
+		// Round-21 #5: a successful DROP GRAPH X must clear our cached
+		// default_graph if it pointed at X, otherwise the next RPC keeps
+		// sending graph_name='X' on the wire, the server's
+		// ValidateGraphExists check fails, and unrelated statements
+		// surface a confusing NOT_FOUND. New servers handle this
+		// authoritatively via current_graph (returns "" after self-drop)
+		// — this branch only fires on older servers without the field.
+		trimmed := strings.TrimSpace(query)
+		if strings.HasPrefix(strings.ToUpper(trimmed), "DROP GRAPH") {
+			rest := strings.TrimSpace(trimmed[len("DROP GRAPH"):])
+			if strings.HasPrefix(strings.ToUpper(rest), "IF EXISTS") {
+				rest = strings.TrimSpace(rest[len("IF EXISTS"):])
+			}
+			dropped := strings.Trim(strings.TrimSpace(strings.TrimRight(rest, ";")), "`\"'")
+			current := s.ctx.GetDefaultGraph()
+			if dropped != "" && current != "" && dropped == current {
+				s.ctx.SetDefaultGraph("")
+			}
 		}
 	}
 
@@ -288,5 +338,6 @@ func (s *QueryService) convertGqlResponse(resp *pb.GqlResponse) (*Response, erro
 		HasMore:      resp.HasMore,
 		Warnings:     resp.Warnings,
 		RowsAffected: resp.RowsAffected,
+		CurrentGraph: resp.CurrentGraph,
 	}, nil
 }

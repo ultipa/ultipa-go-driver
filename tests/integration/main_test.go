@@ -15,10 +15,17 @@ import (
 var testClient *gqldb.Client
 var noAuthClient *gqldb.Client // Client for server without authentication
 
+// Credentials picked up by other test files for direct Login calls.
+// Populated in TestMain from env vars (GQLDB_USERNAME / GQLDB_PASSWORD).
+var (
+	testUsername string
+	testPassword string
+)
+
 // Server addresses
 const (
-	authHost   = "192.168.1.100:60061" // Server with authentication
-	noAuthHost = "192.168.1.100:60062" // Server without authentication
+	authHost   = "127.0.0.1:60063" // Server with authentication
+	noAuthHost = "127.0.0.1:60062" // Server without authentication
 )
 
 func init() {
@@ -43,11 +50,13 @@ func TestMain(m *testing.M) {
 	if username == "" {
 		username = "admin"
 	}
+	testUsername = username
 
 	password := os.Getenv("GQLDB_PASSWORD")
 	if password == "" {
-		password = "root11"
+		password = "admin11"
 	}
+	testPassword = password
 
 	// Try to create auth client (optional - may not be available)
 	config := gqldb.NewConfigBuilder().

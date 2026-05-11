@@ -438,34 +438,65 @@ func (c *Client) CreatePropertyIfNotExist(ctx context.Context, nodeOrEdge types.
 // Convenience API — Constraint Operations (4 methods)
 // =============================================================================
 
+// constraintName derives a stable constraint identifier from
+// kind/entity/label/props so create/drop produce matching names.
+func constraintName(kind string, nodeOrEdge types.DBType, labelName string, propNames []string) string {
+	ent := "node"
+	if nodeOrEdge == types.DBTypeEdge {
+		ent = "edge"
+	}
+	parts := make([]string, len(propNames))
+	for i, p := range propNames {
+		parts[i] = strings.ToLower(p)
+	}
+	return fmt.Sprintf("%s_%s_%s_%s", kind, ent, strings.ToLower(labelName), strings.Join(parts, "_"))
+}
+
+// constraintTarget builds the FOR-clause pattern and bound variable
+// for CREATE CONSTRAINT (server replaced ALTER ... ADD CONSTRAINT with
+// the FOR ... REQUIRE form).
+func constraintTarget(nodeOrEdge types.DBType, labelName string) (string, string) {
+	ql := quoteLabel(labelName)
+	if nodeOrEdge == types.DBTypeNode {
+		return "(n:" + ql + ")", "n"
+	}
+	return "()-[e:" + ql + "]->()", "e"
+}
+
 // CreateNotNullConstraint creates a NOT NULL constraint on a property.
 func (c *Client) CreateNotNullConstraint(ctx context.Context, nodeOrEdge types.DBType, labelName string, propName string, config *QueryConfig) (*Response, error) {
-	entityType := dbTypeToKeyword(nodeOrEdge)
-	gql := fmt.Sprintf("ALTER %s %s ADD CONSTRAINT NOT NULL ON %s", entityType, quoteLabel(labelName), quoteLabel(propName))
+	name := constraintName("nn", nodeOrEdge, labelName, []string{propName})
+	pattern, v := constraintTarget(nodeOrEdge, labelName)
+	gql := fmt.Sprintf("CREATE CONSTRAINT %s FOR %s REQUIRE %s.%s IS NOT NULL", name, pattern, v, quoteLabel(propName))
 	return c.Gql(ctx, gql, config)
 }
 
 // CreateUniqueConstraint creates a UNIQUE constraint on one or more properties.
 // config is accepted as a parameter before the variadic propNames; pass nil for defaults.
 func (c *Client) CreateUniqueConstraint(ctx context.Context, nodeOrEdge types.DBType, labelName string, config *QueryConfig, propNames ...string) (*Response, error) {
-	entityType := dbTypeToKeyword(nodeOrEdge)
-	gql := fmt.Sprintf("ALTER %s %s ADD CONSTRAINT UNIQUE ON %s", entityType, quoteLabel(labelName), quoteLabels(propNames))
+	name := constraintName("uq", nodeOrEdge, labelName, propNames)
+	pattern, v := constraintTarget(nodeOrEdge, labelName)
+	props := make([]string, len(propNames))
+	for i, p := range propNames {
+		props[i] = v + "." + quoteLabel(p)
+	}
+	requireExpr := strings.Join(props, ", ")
+	if len(propNames) > 1 {
+		requireExpr = "(" + requireExpr + ")"
+	}
+	gql := fmt.Sprintf("CREATE CONSTRAINT %s FOR %s REQUIRE %s IS UNIQUE", name, pattern, requireExpr)
 	return c.Gql(ctx, gql, config)
 }
 
 // DropNotNullConstraint removes a NOT NULL constraint from a property.
 func (c *Client) DropNotNullConstraint(ctx context.Context, nodeOrEdge types.DBType, labelName string, propName string, config *QueryConfig) (*Response, error) {
-	entityType := dbTypeToKeyword(nodeOrEdge)
-	gql := fmt.Sprintf("ALTER %s %s DROP CONSTRAINT NOT NULL ON %s", entityType, quoteLabel(labelName), quoteLabel(propName))
-	return c.Gql(ctx, gql, config)
+	return c.Gql(ctx, "DROP CONSTRAINT "+constraintName("nn", nodeOrEdge, labelName, []string{propName}), config)
 }
 
 // DropUniqueConstraint removes a UNIQUE constraint from one or more properties.
 // config is accepted as a parameter before the variadic propNames; pass nil for defaults.
 func (c *Client) DropUniqueConstraint(ctx context.Context, nodeOrEdge types.DBType, labelName string, config *QueryConfig, propNames ...string) (*Response, error) {
-	entityType := dbTypeToKeyword(nodeOrEdge)
-	gql := fmt.Sprintf("ALTER %s %s DROP CONSTRAINT UNIQUE ON %s", entityType, quoteLabel(labelName), quoteLabels(propNames))
-	return c.Gql(ctx, gql, config)
+	return c.Gql(ctx, "DROP CONSTRAINT "+constraintName("uq", nodeOrEdge, labelName, propNames), config)
 }
 
 // =============================================================================

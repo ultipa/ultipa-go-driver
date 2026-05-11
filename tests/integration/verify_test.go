@@ -15,7 +15,7 @@ func TestVerifyConnection(t *testing.T) {
 	defer cancel()
 
 	// Re-login to ensure session is valid
-	session, err := testClient.Login(ctx, "admin", "root11")
+	session, err := testClient.Login(ctx, testUsername, testPassword)
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestDebugSessionMetadata(t *testing.T) {
 	defer cancel()
 
 	// Login
-	session, err := testClient.Login(ctx, "admin", "root11")
+	session, err := testClient.Login(ctx, testUsername, testPassword)
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestGqlCreateGraphSimple(t *testing.T) {
 	defer cancel()
 
 	// Login
-	session, err := testClient.Login(ctx, "admin", "root11")
+	session, err := testClient.Login(ctx, testUsername, testPassword)
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestPingWithSession(t *testing.T) {
 	defer cancel()
 
 	// Re-login to ensure session is valid
-	session, err := testClient.Login(ctx, "admin", "root11")
+	session, err := testClient.Login(ctx, testUsername, testPassword)
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}

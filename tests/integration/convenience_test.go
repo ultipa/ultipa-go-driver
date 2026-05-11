@@ -1782,7 +1782,7 @@ func TestConvenience_InsertNodes(t *testing.T) {
 	// Per-call graph_name — without this the SDK routes to the client's default
 	// graph (miniCircle) and pollutes shared state.
 	ic := &gqldb.InsertConfig{QueryConfig: gqldb.QueryConfig{GraphName: graphName}}
-	resp, err := testClient.InsertNodes(ctx, nodes, ic)
+	resp, err := testClient.InsertNodesGql(ctx, nodes, ic)
 	if err != nil {
 		t.Fatalf("InsertNodes failed: %v", err)
 	}
@@ -1824,7 +1824,7 @@ func TestConvenience_InsertNodes_MissingLabel(t *testing.T) {
 		{Labels: nil, Properties: map[string]interface{}{"name": "NoLabel"}},
 	}
 
-	_, err = testClient.InsertNodes(ctx, nodes, ic)
+	_, err = testClient.InsertNodesGql(ctx, nodes, ic)
 	if err == nil {
 		t.Error("expected error for node with no labels, got nil")
 	} else {
@@ -1839,7 +1839,7 @@ func TestConvenience_InsertNodes_EmptyList(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	resp, err := testClient.InsertNodes(ctx, nil, nil)
+	resp, err := testClient.InsertNodesGql(ctx, nil, nil)
 	if err != nil {
 		t.Fatalf("InsertNodes with empty list failed: %v", err)
 	}
@@ -1871,7 +1871,7 @@ func TestConvenience_InsertEdges(t *testing.T) {
 		{Labels: []string{"Person"}, Properties: map[string]interface{}{"name": "Alice"}},
 		{Labels: []string{"Person"}, Properties: map[string]interface{}{"name": "Bob"}},
 	}
-	_, err = testClient.InsertNodes(ctx, nodes, ic)
+	_, err = testClient.InsertNodesGql(ctx, nodes, ic)
 	if err != nil {
 		t.Fatalf("InsertNodes failed: %v", err)
 	}
@@ -1908,7 +1908,7 @@ func TestConvenience_InsertEdges(t *testing.T) {
 		},
 	}
 
-	edgeResp, err := testClient.InsertEdges(ctx, edges, ic)
+	edgeResp, err := testClient.InsertEdgesGql(ctx, edges, ic)
 	if err != nil {
 		t.Fatalf("InsertEdges failed: %v", err)
 	}
@@ -1931,7 +1931,7 @@ func TestConvenience_InsertEdges_EmptyList(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	resp, err := testClient.InsertEdges(ctx, nil, nil)
+	resp, err := testClient.InsertEdgesGql(ctx, nil, nil)
 	if err != nil {
 		t.Fatalf("InsertEdges with empty list failed: %v", err)
 	}

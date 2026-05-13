@@ -182,7 +182,7 @@ func NewTypedValue(v interface{}) (*TypedValue, error) {
 
 	case DayToSecond:
 		data := make([]byte, 12)
-		binary.LittleEndian.PutUint64(data[0:8], val.Seconds)
+		binary.LittleEndian.PutUint64(data[0:8], uint64(val.Seconds))
 		binary.LittleEndian.PutUint32(data[8:12], val.Nanoseconds)
 		return &TypedValue{Type: PropertyTypeDayToSecond, Data: data}, nil
 
@@ -407,7 +407,7 @@ func (tv *TypedValue) ToGo() (interface{}, error) {
 			return DayToSecond{}, nil
 		}
 		return DayToSecond{
-			Seconds:     binary.LittleEndian.Uint64(tv.Data[0:8]),
+			Seconds:     int64(binary.LittleEndian.Uint64(tv.Data[0:8])),
 			Nanoseconds: binary.LittleEndian.Uint32(tv.Data[8:12]),
 		}, nil
 

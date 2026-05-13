@@ -3,6 +3,8 @@ package gqldb
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"strings"
 
 	"github.com/ultipa/ultipa-go-driver/v6/types"
 )
@@ -26,19 +28,45 @@ type Response struct {
 }
 
 // Row represents a single row in the query result.
+//
+// Positional access via Get / GetString / GetInt / etc. is always available.
+// Name-based access (GetByName, Has) requires ColumnNames to be populated,
+// which Response does automatically (via NewResponse or PropagateColumnNames).
 type Row struct {
 	Values []*TypedValue
+	// ColumnNames mirrors Response.Columns. Populated by Response so the
+	// row can be looked up by name without holding a back-reference to
+	// the parent Response. May be nil if the Row was constructed standalone.
+	ColumnNames []string
 }
 
-// NewResponse creates a new Response.
+// NewResponse creates a new Response and propagates Columns into each
+// Row's ColumnNames so row.GetByName works.
 func NewResponse(columns []string, rows []*Row, rowCount int64, hasMore bool, warnings []string, rowsAffected int64) *Response {
-	return &Response{
+	resp := &Response{
 		Columns:      columns,
 		Rows:         rows,
 		RowCount:     rowCount,
 		HasMore:      hasMore,
 		Warnings:     warnings,
 		RowsAffected: rowsAffected,
+	}
+	resp.PropagateColumnNames()
+	return resp
+}
+
+// PropagateColumnNames pushes resp.Columns into each Row's ColumnNames so
+// row.GetByName / row.Has work. Idempotent: rows that already have
+// ColumnNames set are not overwritten. Call this after constructing a
+// Response via struct literal (NewResponse calls it automatically).
+func (resp *Response) PropagateColumnNames() {
+	if len(resp.Columns) == 0 {
+		return
+	}
+	for _, row := range resp.Rows {
+		if row != nil && row.ColumnNames == nil {
+			row.ColumnNames = resp.Columns
+		}
 	}
 }
 
@@ -53,6 +81,94 @@ func (r *Row) Get(index int) (interface{}, error) {
 		return nil, fmt.Errorf("column index out of range: %d", index)
 	}
 	return r.Values[index].ToGo()
+}
+
+// GetByName returns the value for the given column name. Requires
+// ColumnNames to be populated (Response does this automatically).
+func (r *Row) GetByName(name string) (interface{}, error) {
+	if r.ColumnNames == nil {
+		return nil, fmt.Errorf("row column names not populated; cannot look up %q by name", name)
+	}
+	for i, col := range r.ColumnNames {
+		if col == name {
+			return r.Get(i)
+		}
+	}
+	return nil, fmt.Errorf("column not found: %s", name)
+}
+
+// Has reports whether the row knows the given column name. Returns false
+// if ColumnNames was never populated.
+func (r *Row) Has(name string) bool {
+	for _, col := range r.ColumnNames {
+		if col == name {
+			return true
+		}
+	}
+	return false
+}
+
+// Len returns the number of columns in the row.
+func (r *Row) Len() int {
+	return len(r.Values)
+}
+
+// String returns a formatted representation of the row.
+// When ColumnNames is populated: "Row(name1=val1, name2=val2)".
+// Otherwise: "Row(val0, val1)". Mirrors Python's repr(row) layout.
+func (r *Row) String() string {
+	if r == nil {
+		return "Row(<nil>)"
+	}
+	var sb strings.Builder
+	sb.WriteString("Row(")
+	for i, tv := range r.Values {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		if i < len(r.ColumnNames) {
+			sb.WriteString(r.ColumnNames[i])
+			sb.WriteByte('=')
+		}
+		v, _ := tv.ToGo()
+		if s, ok := v.(string); ok {
+			sb.WriteByte('\'')
+			sb.WriteString(s)
+			sb.WriteByte('\'')
+		} else {
+			fmt.Fprintf(&sb, "%v", v)
+		}
+	}
+	sb.WriteByte(')')
+	return sb.String()
+}
+
+// Equal returns true when the receiver and other have the same column
+// names (or both are unset) and their decoded values compare equal
+// position-by-position. Mirrors Python Row.__eq__ semantics.
+func (r *Row) Equal(other *Row) bool {
+	if r == nil || other == nil {
+		return r == other
+	}
+	if len(r.ColumnNames) != len(other.ColumnNames) {
+		return false
+	}
+	for i, c := range r.ColumnNames {
+		if c != other.ColumnNames[i] {
+			return false
+		}
+	}
+	if len(r.Values) != len(other.Values) {
+		return false
+	}
+	for i, tv := range r.Values {
+		a, _ := tv.ToGo()
+		b, _ := other.Values[i].ToGo()
+		if !reflect.DeepEqual(a, b) {
+			return false
+		}
+	}
+	return true
 }
 
 // GetString returns the value at the given column index as a string.

@@ -793,12 +793,14 @@ func (c *Client) InsertEdgesGql(ctx context.Context, edges []types.EdgeData, con
 		}
 	}
 	mergedRow := &Row{Values: allValues}
-	return &Response{
+	resp := &Response{
 		Columns:      allColumns,
 		Rows:         []*Row{mergedRow},
 		RowCount:     1,
 		RowsAffected: totalAffected,
-	}, nil
+	}
+	resp.PropagateColumnNames()
+	return resp, nil
 }
 
 // =============================================================================

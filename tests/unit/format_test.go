@@ -208,7 +208,7 @@ func TestFormatAndParseYearToMonth(t *testing.T) {
 
 func TestFormatAndParseDayToSecond(t *testing.T) {
 	tests := []struct {
-		seconds uint64
+		seconds int64
 		nanos   uint32
 		want    string
 	}{
@@ -216,6 +216,8 @@ func TestFormatAndParseDayToSecond(t *testing.T) {
 		{3*86400 + 4*3600, 0, "P3DT4H"},
 		{1*86400 + 2*3600 + 3*60 + 4, 120000000, "P1DT2H3M4.12S"},
 		{90, 0, "PT1M30S"},
+		{-3600, 0, "-PT1H"},
+		{-(86400 + 3600), 0, "-P1DT1H"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {

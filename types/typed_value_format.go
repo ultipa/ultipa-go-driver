@@ -303,18 +303,26 @@ func formatYearToMonth(months int32) string {
 	return result
 }
 
-func formatDayToSecond(seconds uint64, nanoseconds uint32) string {
+func formatDayToSecond(seconds int64, nanoseconds uint32) string {
 	if seconds == 0 && nanoseconds == 0 {
 		return "PT0S"
 	}
-	days := seconds / 86400
-	rem := seconds % 86400
+	negative := seconds < 0
+	absSecs := uint64(seconds)
+	if negative {
+		absSecs = uint64(-seconds)
+	}
+	days := absSecs / 86400
+	rem := absSecs % 86400
 	hours := rem / 3600
 	rem = rem % 3600
 	minutes := rem / 60
 	secs := rem % 60
 
 	result := "P"
+	if negative {
+		result = "-P"
+	}
 	if days > 0 {
 		result += fmt.Sprintf("%dD", days)
 	}
@@ -633,11 +641,11 @@ func parseDayToSecond(s string) (DayToSecond, error) {
 		}
 	}
 
+	signedSecs := int64(totalSeconds)
 	if negative {
-		// DayToSecond uses unsigned fields, negative durations not fully supported
-		_ = negative
+		signedSecs = -signedSecs
 	}
-	return DayToSecond{Seconds: totalSeconds, Nanoseconds: totalNanos}, nil
+	return DayToSecond{Seconds: signedSecs, Nanoseconds: totalNanos}, nil
 }
 
 // parseTimeComponents parses "HH:mm:ss" or "HH:mm:ss.nnnnnnnnn"

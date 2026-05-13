@@ -1188,7 +1188,7 @@ func (c *Client) convertFromServiceResponse(svcResp *services.Response) *Respons
 		rows[i] = &Row{Values: values}
 	}
 
-	return &Response{
+	resp := &Response{
 		Columns:      svcResp.Columns,
 		Rows:         rows,
 		RowCount:     svcResp.RowCount,
@@ -1197,6 +1197,8 @@ func (c *Client) convertFromServiceResponse(svcResp *services.Response) *Respons
 		RowsAffected: svcResp.RowsAffected,
 		CurrentGraph: svcResp.CurrentGraph,
 	}
+	resp.PropagateColumnNames()
+	return resp
 }
 
 // convertProperties converts Go map to proto TypedValue map.

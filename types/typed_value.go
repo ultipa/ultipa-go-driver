@@ -89,7 +89,8 @@ func NewTypedValue(v interface{}) (*TypedValue, error) {
 		// DATETIME (deprecated): same as LOCAL_DATETIME, 11-byte structured format
 		t := val.Time
 		data := make([]byte, 11)
-		binary.LittleEndian.PutUint16(data[0:2], uint16(t.Year()))
+		// year is signed int16 so BCE years (e.g. -44) round-trip.
+		binary.LittleEndian.PutUint16(data[0:2], uint16(int16(t.Year())))
 		data[2] = uint8(t.Month())
 		data[3] = uint8(t.Day())
 		data[4] = uint8(t.Hour())
@@ -113,7 +114,8 @@ func NewTypedValue(v interface{}) (*TypedValue, error) {
 
 	case GqldbDate:
 		data := make([]byte, 8)
-		binary.LittleEndian.PutUint16(data[0:2], val.Year)
+		// year is signed int16; uint16 cast preserves the bit pattern.
+		binary.LittleEndian.PutUint16(data[0:2], uint16(val.Year))
 		data[2] = val.Month
 		data[3] = val.Day
 		// bytes 4-7 are padding (zeros)
@@ -133,7 +135,8 @@ func NewTypedValue(v interface{}) (*TypedValue, error) {
 		// LOCAL_DATETIME: 11-byte structured format [year:2][month:1][day:1][hour:1][min:1][sec:1][nanos:4]
 		t := val.Time
 		data := make([]byte, 11)
-		binary.LittleEndian.PutUint16(data[0:2], uint16(t.Year()))
+		// year is signed int16 so BCE years (e.g. -44) round-trip.
+		binary.LittleEndian.PutUint16(data[0:2], uint16(int16(t.Year())))
 		data[2] = uint8(t.Month())
 		data[3] = uint8(t.Day())
 		data[4] = uint8(t.Hour())
@@ -146,7 +149,8 @@ func NewTypedValue(v interface{}) (*TypedValue, error) {
 		// ZONED_DATETIME: 13-byte structured format [year:2][month:1][day:1][hour:1][min:1][sec:1][nanos:4][offset_min:2]
 		t := val.Time
 		data := make([]byte, 13)
-		binary.LittleEndian.PutUint16(data[0:2], uint16(t.Year()))
+		// year is signed int16 so BCE years (e.g. -44) round-trip.
+		binary.LittleEndian.PutUint16(data[0:2], uint16(int16(t.Year())))
 		data[2] = uint8(t.Month())
 		data[3] = uint8(t.Day())
 		data[4] = uint8(t.Hour())
@@ -288,7 +292,8 @@ func (tv *TypedValue) ToGo() (interface{}, error) {
 			return GqldbDate{}, nil
 		}
 		return GqldbDate{
-			Year:  binary.LittleEndian.Uint16(tv.Data[0:2]),
+			// year is signed int16; int16 cast restores the sign.
+			Year:  int16(binary.LittleEndian.Uint16(tv.Data[0:2])),
 			Month: tv.Data[2],
 			Day:   tv.Data[3],
 		}, nil
@@ -336,7 +341,8 @@ func (tv *TypedValue) ToGo() (interface{}, error) {
 		if len(tv.Data) < 7 {
 			return LocalDateTime{}, nil
 		}
-		year := int(binary.LittleEndian.Uint16(tv.Data[0:2]))
+		// year is signed int16 so BCE years (e.g. -44) round-trip.
+		year := int(int16(binary.LittleEndian.Uint16(tv.Data[0:2])))
 		month := time.Month(tv.Data[2])
 		day := int(tv.Data[3])
 		hour := int(tv.Data[4])
@@ -353,7 +359,8 @@ func (tv *TypedValue) ToGo() (interface{}, error) {
 		if len(tv.Data) < 7 {
 			return ZonedDateTime{}, nil
 		}
-		year := int(binary.LittleEndian.Uint16(tv.Data[0:2]))
+		// year is signed int16 so BCE years (e.g. -44) round-trip.
+		year := int(int16(binary.LittleEndian.Uint16(tv.Data[0:2])))
 		month := time.Month(tv.Data[2])
 		day := int(tv.Data[3])
 		hour := int(tv.Data[4])

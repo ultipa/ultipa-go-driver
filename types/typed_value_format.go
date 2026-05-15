@@ -400,7 +400,7 @@ func parseDate(s string) (GqldbDate, error) {
 	if err != nil {
 		return GqldbDate{}, fmt.Errorf("cannot parse %q as date (expected yyyy-MM-dd): %w", s, err)
 	}
-	return GqldbDate{Year: uint16(t.Year()), Month: uint8(t.Month()), Day: uint8(t.Day())}, nil
+	return GqldbDate{Year: int16(t.Year()), Month: uint8(t.Month()), Day: uint8(t.Day())}, nil
 }
 
 func parseLocalTime(s string) (LocalTime, error) {

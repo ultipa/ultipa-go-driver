@@ -77,8 +77,12 @@ type ZonedDateTime struct {
 }
 
 // GqldbDate represents a date without time.
+//
+// Year is signed (int16) so BCE years (e.g. -44) round-trip correctly.
+// The wire format encodes/decodes via uint16 bit pattern (little-endian),
+// matching Python's `<h` struct format and Java's signed short.
 type GqldbDate struct {
-	Year  uint16
+	Year  int16
 	Month uint8 // 1-12
 	Day   uint8 // 1-31
 }

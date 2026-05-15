@@ -18,8 +18,20 @@ type Connection struct {
 	conn       *grpc.ClientConn
 	healthy    bool
 	lastPing   time.Time
-	mu         sync.RWMutex
+	// consecutiveUnhealthy counts how many consecutive health-check
+	// ticks observed a non-READY state.  Reconnect is only triggered
+	// after this reaches unhealthyReconnectThreshold, so a single
+	// transient flicker during a busy in-flight RPC doesn't tear the
+	// channel down and cancel every pending request.
+	consecutiveUnhealthy int
+	mu                   sync.RWMutex
 }
+
+// unhealthyReconnectThreshold is the number of consecutive unhealthy
+// health-check ticks required before the pool replaces the channel.
+// Three ticks gives a busy channel time to recover on its own before
+// we interrupt it.
+const unhealthyReconnectThreshold = 3
 
 // ConnectionPool manages a pool of connections to GQLDB servers.
 type ConnectionPool struct {
@@ -166,6 +178,17 @@ func (p *ConnectionPool) healthCheckLoop() {
 }
 
 // checkHealth checks the health of all connections.
+//
+// Connectivity-state semantics:
+//   - READY / IDLE        — healthy; reset the unhealthy counter.
+//   - CONNECTING          — transient; leave the counter alone, don't
+//     reconnect (the channel is healing itself).
+//   - SHUTDOWN            — terminal; reconnect immediately.
+//   - TRANSIENT_FAILURE   — count toward unhealthy; reconnect only after
+//     unhealthyReconnectThreshold consecutive ticks.
+//
+// Reconnect replaces the pool's channel reference; it does NOT close
+// the old channel, so in-flight RPCs continue to completion on it.
 func (p *ConnectionPool) checkHealth() {
 	p.mu.RLock()
 	hosts := make([]string, 0, len(p.connections))
@@ -183,25 +206,52 @@ func (p *ConnectionPool) checkHealth() {
 			continue
 		}
 
-		// Check connection state
-		state := conn.conn.GetState()
-		healthy := state.String() == "READY" || state.String() == "IDLE"
+		state := conn.conn.GetState().String()
 
-		conn.mu.Lock()
-		conn.healthy = healthy
-		if healthy {
+		switch state {
+		case "READY", "IDLE":
+			conn.mu.Lock()
+			conn.healthy = true
+			conn.consecutiveUnhealthy = 0
 			conn.lastPing = time.Now()
-		}
-		conn.mu.Unlock()
+			conn.mu.Unlock()
 
-		// Try to reconnect if unhealthy
-		if !healthy {
+		case "CONNECTING":
+			// Transient — let the channel heal itself.
+
+		case "SHUTDOWN":
+			conn.mu.Lock()
+			conn.healthy = false
+			conn.consecutiveUnhealthy = unhealthyReconnectThreshold
+			conn.mu.Unlock()
 			p.reconnect(host)
+
+		default:
+			// TRANSIENT_FAILURE or any other non-READY state.
+			conn.mu.Lock()
+			conn.consecutiveUnhealthy++
+			shouldReconnect := conn.consecutiveUnhealthy >= unhealthyReconnectThreshold
+			if shouldReconnect {
+				conn.healthy = false
+			}
+			conn.mu.Unlock()
+			if shouldReconnect {
+				p.reconnect(host)
+			}
 		}
 	}
 }
 
-// reconnect attempts to reconnect to a host.
+// reconnect replaces the pool's channel for host with a fresh one.
+//
+// Critically, this does NOT close the old channel.  In-flight RPCs
+// hold their own reference to it and continue to completion on that
+// channel; the Go runtime's reference counting (via *grpc.ClientConn
+// finalizers) closes the old channel only after every in-flight RPC
+// has returned.
+//
+// Earlier versions closed the old channel synchronously here, which
+// cancelled every pending RPC with a "Channel closed!"-style error.
 func (p *ConnectionPool) reconnect(host string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -210,18 +260,16 @@ func (p *ConnectionPool) reconnect(host string) {
 		return
 	}
 
-	// Close existing connection
-	if conn, ok := p.connections[host]; ok {
-		conn.conn.Close()
-		delete(p.connections, host)
-	}
-
-	// Create new connection
+	// Build a new connection up-front; only swap if it succeeds.
 	newConn, err := p.createConnection(host)
 	if err != nil {
 		return
 	}
 
+	// Overwrite the pool entry.  The old Connection is now unreferenced
+	// by the pool; in-flight RPCs still hold its *grpc.ClientConn alive
+	// via their per-RPC bindings.  Once they complete the connection
+	// becomes garbage and gRPC closes it naturally.
 	p.connections[host] = newConn
 }
 

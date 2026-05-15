@@ -372,3 +372,42 @@ func TestParseZonedDateTimeWithZ(t *testing.T) {
 		t.Fatalf("expected offset 0, got %d", zdt.OffsetMinutes)
 	}
 }
+
+func TestBceYearRoundTrip(t *testing.T) {
+	cases := []int16{-44, -1, 0, 1, 1066}
+	for _, y := range cases {
+		d := types.GqldbDate{Year: y, Month: 3, Day: 15}
+		tv, err := gqldb.NewTypedValue(d)
+		if err != nil {
+			t.Fatalf("year=%d encode: %v", y, err)
+		}
+		val, err := tv.ToGo()
+		if err != nil {
+			t.Fatalf("year=%d decode: %v", y, err)
+		}
+		got := val.(types.GqldbDate)
+		if got.Year != y {
+			t.Fatalf("year=%d round-trip got %d", y, got.Year)
+		}
+	}
+}
+
+func TestBceYearLocalDateTimeRoundTrip(t *testing.T) {
+	cases := []int{-44, 0, 1066}
+	for _, y := range cases {
+		original := time.Date(y, 3, 15, 12, 0, 0, 0, time.UTC)
+		ldt := types.LocalDateTime{Time: original}
+		tv, err := gqldb.NewTypedValue(ldt)
+		if err != nil {
+			t.Fatalf("year=%d encode: %v", y, err)
+		}
+		val, err := tv.ToGo()
+		if err != nil {
+			t.Fatalf("year=%d decode: %v", y, err)
+		}
+		got := val.(types.LocalDateTime)
+		if got.Time.Year() != y {
+			t.Fatalf("year=%d round-trip got %d", y, got.Time.Year())
+		}
+	}
+}

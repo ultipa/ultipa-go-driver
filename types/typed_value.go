@@ -14,6 +14,21 @@ type TypedValue struct {
 	Type   PropertyType
 	Data   []byte
 	IsNull bool
+	// CachedGo holds a pre-decoded Go value populated by FromGo. When
+	// non-nil, ToGo returns it directly instead of decoding Data. Used
+	// by SDK paths that synthesize TypedValues from non-wire sources
+	// (e.g. DeleteEdges reshaping 5 raw columns into a single EDGE
+	// column).
+	CachedGo interface{}
+}
+
+// FromGo wraps a pre-decoded Go value with a declared PropertyType.
+// ToGo returns the value directly, bypassing binary decode.
+func FromGo(t PropertyType, v interface{}) *TypedValue {
+	if v == nil {
+		return &TypedValue{Type: PropertyTypeNull, IsNull: true}
+	}
+	return &TypedValue{Type: t, CachedGo: v}
 }
 
 // NewTypedValue creates a TypedValue from a Go value.
@@ -218,6 +233,9 @@ func NewTypedValue(v interface{}) (*TypedValue, error) {
 func (tv *TypedValue) ToGo() (interface{}, error) {
 	if tv.IsNull {
 		return nil, nil
+	}
+	if tv.CachedGo != nil {
+		return tv.CachedGo, nil
 	}
 
 	switch tv.Type {

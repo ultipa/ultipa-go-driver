@@ -772,7 +772,20 @@ func (c *Client) InsertEdgesGql(ctx context.Context, edges []types.EdgeData, con
 		if edge.Label != "" {
 			labelPart = ":" + quoteLabel(edge.Label)
 		}
-		propStr := buildPropertiesValueString(edge.Properties)
+		// Build properties including _id if set — mirrors the node
+		// emitter at InsertNodesGql.  The server's GQL parser accepts
+		// `[e0:Knows {_id:'...', ...}]` and stores the edge id verbatim
+		// when EDGE_ID is enabled on the graph.
+		props := edge.Properties
+		if edge.ID != "" {
+			merged := make(map[string]interface{}, len(props)+1)
+			merged["_id"] = edge.ID
+			for k, v := range props {
+				merged[k] = v
+			}
+			props = merged
+		}
+		propStr := buildPropertiesValueString(props)
 		var edgePart string
 		if propStr != "" {
 			edgePart = fmt.Sprintf("[%s%s %s]", varName, labelPart, propStr)

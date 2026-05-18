@@ -29,6 +29,42 @@ type InsertConfig struct {
 	InsertType InsertType
 }
 
+// DeleteConfig extends QueryConfig with options for the new GQL-emitter
+// delete API (DeleteNodesByIDs / DeleteNodesByCondition /
+// DeleteEdgesByIDs / DeleteEdgesByCondition).
+//
+// Two knobs:
+//
+//   - ReturnDeleted (default true) emits "RETURN ..." so the response
+//     carries full deleted node/edge data. Set false on bulk deletes
+//     to save bandwidth; RowsAffected still carries the count.
+//
+//   - AllowDeleteAll (default false) safety latch. With empty
+//     labels/ids AND empty where, the SDK would otherwise emit a
+//     graph-wide delete; this flag must be explicitly true to opt in.
+//
+// Note Go's zero-value semantics: ReturnDeleted defaults to false
+// (Go zero value). The SDK treats `nil` config OR a freshly-built
+// `&DeleteConfig{...}` as "RETURN by default" — the explicit way to
+// suppress RETURN is `cfg.ReturnDeleted = false` after setting
+// `cfg.ReturnDeleted = true` is normally not needed.
+//
+// To match the "default true" semantics consistently across languages,
+// use the constructor `NewDeleteConfig()` instead of `&DeleteConfig{}`.
+type DeleteConfig struct {
+	QueryConfig
+	ReturnDeleted  bool
+	AllowDeleteAll bool
+}
+
+// NewDeleteConfig returns a DeleteConfig with the SDK defaults
+// (ReturnDeleted=true, AllowDeleteAll=false). Prefer this over
+// `&DeleteConfig{}` because Go's zero-value bool is false, which would
+// otherwise silently disable RETURN.
+func NewDeleteConfig() *DeleteConfig {
+	return &DeleteConfig{ReturnDeleted: true}
+}
+
 // InsertNodesConfig represents configuration for the InsertNodes RPC,
 // including bulk-import sessions.
 //

@@ -113,13 +113,15 @@ func TestDeleteNodesNonexistentId(t *testing.T) {
 	defer dropTestGraph(graphName)
 
 	// Delete nodes with nonexistent IDs - should succeed with 0 deleted
-	result, err := testClient.DeleteNodes(ctx, graphName, []string{"nonexistent_id_xyz"}, nil, "")
+	cfg := gqldb.NewDeleteConfig()
+	cfg.GraphName = graphName
+	result, err := testClient.DeleteNodesByIDs(ctx, []string{"nonexistent_id_xyz"}, cfg)
 	if err != nil {
-		t.Logf("DeleteNodes with nonexistent ID returned error: %v", err)
+		t.Logf("DeleteNodesByIDs with nonexistent ID returned error: %v", err)
 	} else {
-		t.Logf("DeleteNodes with nonexistent ID: success=%v, deletedCount=%d", result.Success, result.DeletedCount)
-		if result.DeletedCount != 0 {
-			t.Errorf("expected 0 deleted, got %d", result.DeletedCount)
+		t.Logf("DeleteNodesByIDs with nonexistent ID: rowsAffected=%d", result.RowsAffected)
+		if result.RowsAffected != 0 {
+			t.Errorf("expected 0 rowsAffected, got %d", result.RowsAffected)
 		}
 	}
 }
@@ -141,13 +143,15 @@ func TestDeleteEdgesNonexistentId(t *testing.T) {
 	defer dropTestGraph(graphName)
 
 	// Delete edges with nonexistent IDs - should succeed with 0 deleted
-	result, err := testClient.DeleteEdges(ctx, graphName, []string{"nonexistent_edge_id_xyz"}, "", "")
+	cfg := gqldb.NewDeleteConfig()
+	cfg.GraphName = graphName
+	result, err := testClient.DeleteEdgesByIDs(ctx, []string{"nonexistent_edge_id_xyz"}, cfg)
 	if err != nil {
-		t.Logf("DeleteEdges with nonexistent ID returned error: %v", err)
+		t.Logf("DeleteEdgesByIDs with nonexistent ID returned error: %v", err)
 	} else {
-		t.Logf("DeleteEdges with nonexistent ID: success=%v, deletedCount=%d", result.Success, result.DeletedCount)
-		if result.DeletedCount != 0 {
-			t.Errorf("expected 0 deleted, got %d", result.DeletedCount)
+		t.Logf("DeleteEdgesByIDs with nonexistent ID: rowsAffected=%d", result.RowsAffected)
+		if result.RowsAffected != 0 {
+			t.Errorf("expected 0 rowsAffected, got %d", result.RowsAffected)
 		}
 	}
 }
@@ -379,16 +383,17 @@ func TestDeleteNodes(t *testing.T) {
 	t.Logf("Inserted %d nodes for deletion test, IDs: %v", insertResult.NodeCount, nodeIDs)
 
 	// Delete nodes by IDs (using queried IDs)
-	deleteResult, err := testClient.DeleteNodes(ctx, graphName, nodeIDs, nil, "")
+	delCfg := gqldb.NewDeleteConfig()
+	delCfg.GraphName = graphName
+	deleteResult, err := testClient.DeleteNodesByIDs(ctx, nodeIDs, delCfg)
 	if err != nil {
-		t.Fatalf("DeleteNodes failed: %v", err)
+		t.Fatalf("DeleteNodesByIDs failed: %v", err)
 	}
 
-	t.Logf("DeleteNodes result: success=%v, deletedCount=%d, message=%s",
-		deleteResult.Success, deleteResult.DeletedCount, deleteResult.Message)
+	t.Logf("DeleteNodesByIDs result: rowsAffected=%d", deleteResult.RowsAffected)
 
-	if deleteResult.DeletedCount != 2 {
-		t.Logf("Warning: expected 2 nodes deleted, got %d", deleteResult.DeletedCount)
+	if deleteResult.RowsAffected != 2 {
+		t.Logf("Warning: expected 2 rowsAffected, got %d", deleteResult.RowsAffected)
 	}
 
 	// Verify deletion by querying the graph
@@ -515,16 +520,17 @@ func TestDeleteEdges(t *testing.T) {
 	}
 
 	// Delete edges by IDs (using queried IDs)
-	deleteResult, err := testClient.DeleteEdges(ctx, graphName, edgeIDs, "", "")
+	delCfg := gqldb.NewDeleteConfig()
+	delCfg.GraphName = graphName
+	deleteResult, err := testClient.DeleteEdgesByIDs(ctx, edgeIDs, delCfg)
 	if err != nil {
-		t.Fatalf("DeleteEdges failed: %v", err)
+		t.Fatalf("DeleteEdgesByIDs failed: %v", err)
 	}
 
-	t.Logf("DeleteEdges result: success=%v, deletedCount=%d, message=%s",
-		deleteResult.Success, deleteResult.DeletedCount, deleteResult.Message)
+	t.Logf("DeleteEdgesByIDs result: rowsAffected=%d", deleteResult.RowsAffected)
 
-	if deleteResult.DeletedCount != 1 {
-		t.Logf("Warning: expected 1 edge deleted, got %d", deleteResult.DeletedCount)
+	if deleteResult.RowsAffected != 1 {
+		t.Logf("Warning: expected 1 rowsAffected, got %d", deleteResult.RowsAffected)
 	}
 }
 

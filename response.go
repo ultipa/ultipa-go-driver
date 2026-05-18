@@ -380,13 +380,6 @@ type InsertEdgesResult struct {
 	SkippedCount int64
 }
 
-// DeleteResult represents the result of a delete operation.
-type DeleteResult struct {
-	Success      bool
-	DeletedCount int64
-	Message      string
-}
-
 // ExportConfig represents configuration for the Export operation.
 type ExportConfig struct {
 	GraphName       string   // Required: graph to export

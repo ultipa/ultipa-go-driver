@@ -125,6 +125,7 @@ type Attr = types.Attr
 // Re-export config types
 type QueryConfig = types.QueryConfig
 type InsertConfig = types.InsertConfig
+type DeleteConfig = types.DeleteConfig
 type InsertNodesConfig = types.InsertNodesConfig
 type InsertEdgesConfig = types.InsertEdgesConfig
 type HealthWatcher = types.HealthWatcher
@@ -140,3 +141,8 @@ const (
 	InsertTypeOverwrite = types.InsertTypeOverwrite
 	InsertTypeUpsert    = types.InsertTypeUpsert
 )
+
+// NewDeleteConfig returns a DeleteConfig with SDK-default knobs
+// (ReturnDeleted=true). Use this rather than `&DeleteConfig{}` to
+// avoid Go zero-value silently turning off RETURN.
+var NewDeleteConfig = types.NewDeleteConfig

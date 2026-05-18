@@ -116,13 +116,6 @@ type InsertEdgesResult struct {
 	Message      string
 }
 
-// DeleteResult represents the result of delete operations.
-type DeleteResult struct {
-	Success bool
-	Deleted int64
-	Message string
-}
-
 // InsertNodesConfig represents configuration for inserting nodes.
 // See types.InsertNodesConfig for semantic docs.
 type InsertNodesConfig struct {
@@ -256,51 +249,11 @@ func (s *DataService) InsertEdges(ctx context.Context, graphName string, edges [
 	}, nil
 }
 
-// DeleteNodes deletes nodes from a graph.
-func (s *DataService) DeleteNodes(ctx context.Context, graphName string, nodeIDs, labels []string, where string) (*DeleteResult, error) {
-	ctx = s.ctx.WithSessionMetadata(ctx)
-
-	req := &pb.DeleteNodesRequest{
-		GraphName: graphName,
-		NodeIds:   nodeIDs,
-		Labels:    labels,
-		Where:     where,
-	}
-
-	resp, err := s.ctx.DataClient.DeleteNodes(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	return &DeleteResult{
-		Success: resp.Success,
-		Deleted: resp.DeletedCount,
-		Message: resp.Message,
-	}, nil
-}
-
-// DeleteEdges deletes edges from a graph.
-func (s *DataService) DeleteEdges(ctx context.Context, graphName string, edgeIDs []string, label, where string) (*DeleteResult, error) {
-	ctx = s.ctx.WithSessionMetadata(ctx)
-
-	req := &pb.DeleteEdgesRequest{
-		GraphName: graphName,
-		EdgeIds:   edgeIDs,
-		Label:     label,
-		Where:     where,
-	}
-
-	resp, err := s.ctx.DataClient.DeleteEdges(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	return &DeleteResult{
-		Success: resp.Success,
-		Deleted: resp.DeletedCount,
-		Message: resp.Message,
-	}, nil
-}
+// DeleteNodes / DeleteEdges no longer go through the gRPC DataService
+// DeleteNodes / DeleteEdges RPCs (those proto methods are being removed
+// server-side). The public delete API lives on Client as
+// DeleteNodesByIDs / DeleteNodesByCondition / DeleteEdgesByIDs /
+// DeleteEdgesByCondition, which emit GQL and return a full *Response.
 
 // ExportConfig represents configuration for the Export operation.
 type ExportConfig struct {

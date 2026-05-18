@@ -9,6 +9,7 @@ import (
 
 	pb "github.com/ultipa/ultipa-go-driver/v6/proto"
 	"github.com/ultipa/ultipa-go-driver/v6/services"
+	"github.com/ultipa/ultipa-go-driver/v6/types"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -703,32 +704,216 @@ func (c *Client) InsertEdgesBatchAuto(ctx context.Context, graphName string, edg
 	return c.InsertEdges(ctx, graphName, edges, config)
 }
 
-// DeleteNodes deletes nodes from a graph.
-func (c *Client) DeleteNodes(ctx context.Context, graphName string, nodeIDs []string, labels []string, where string) (*DeleteResult, error) {
-	result, err := c.dataSvc.DeleteNodes(ctx, graphName, nodeIDs, labels, where)
-	if err != nil {
-		return nil, NewError(0, "delete nodes failed", err)
+// DeleteNodesByIDs deletes nodes by id list. Emits
+// `MATCH (n) WHERE id(n) IN [...] DETACH DELETE n RETURN n`.
+// Empty/nil nodeIDs short-circuits without contacting the server.
+// Use response.Alias("n").AsNodes() to access the deleted nodes.
+// With config.ReturnDeleted=false, only RowsAffected is meaningful.
+func (c *Client) DeleteNodesByIDs(ctx context.Context, nodeIDs []string, config *DeleteConfig) (*Response, error) {
+	cfg := normalizeDeleteConfig(config)
+	if len(nodeIDs) == 0 {
+		return &Response{}, nil
 	}
-
-	return &DeleteResult{
-		Success:      result.Success,
-		DeletedCount: result.Deleted,
-		Message:      result.Message,
-	}, nil
+	gql := "MATCH (n) WHERE id(n) IN [" + formatStringList(nodeIDs) + "] DETACH DELETE n"
+	if cfg.ReturnDeleted {
+		gql += " RETURN n"
+	}
+	return c.Gql(ctx, gql, deleteConfigToQueryConfig(cfg))
 }
 
-// DeleteEdges deletes edges from a graph.
-func (c *Client) DeleteEdges(ctx context.Context, graphName string, edgeIDs []string, label string, where string) (*DeleteResult, error) {
-	result, err := c.dataSvc.DeleteEdges(ctx, graphName, edgeIDs, label, where)
-	if err != nil {
-		return nil, NewError(0, "delete edges failed", err)
+// DeleteNodesByCondition deletes nodes matching labels and/or where.
+// Emits `MATCH (n:L1|L2) WHERE <where> [LIMIT N] DETACH DELETE n RETURN n`.
+//
+// limit caps the number of nodes deleted (LIMIT N before DETACH DELETE).
+// `limit <= 0` = no cap. Pass 0 if you don't want a limit.
+//
+// Returns an error if both labels and where are empty unless
+// config.AllowDeleteAll is true.
+func (c *Client) DeleteNodesByCondition(ctx context.Context, labels []string, where string, limit int, config *DeleteConfig) (*Response, error) {
+	cfg := normalizeDeleteConfig(config)
+	noLabels := len(labels) == 0
+	noWhere := strings.TrimSpace(where) == ""
+	if noLabels && noWhere && !cfg.AllowDeleteAll {
+		return nil, fmt.Errorf(
+			"DeleteNodesByCondition with no labels and no where would delete every " +
+				"node in the graph. If this is intentional, set DeleteConfig.AllowDeleteAll = true")
 	}
+	gql := "MATCH (n"
+	if !noLabels {
+		parts := make([]string, len(labels))
+		for i, l := range labels {
+			parts[i] = "`" + l + "`"
+		}
+		gql += ":" + strings.Join(parts, "|")
+	}
+	gql += ")"
+	if !noWhere {
+		gql += " WHERE " + where
+	}
+	if limit > 0 {
+		gql += fmt.Sprintf(" LIMIT %d", limit)
+	}
+	gql += " DETACH DELETE n"
+	if cfg.ReturnDeleted {
+		gql += " RETURN n"
+	}
+	return c.Gql(ctx, gql, deleteConfigToQueryConfig(cfg))
+}
 
-	return &DeleteResult{
-		Success:      result.Success,
-		DeletedCount: result.Deleted,
-		Message:      result.Message,
-	}, nil
+// DeleteEdgesByIDs deletes edges by id list. Emits 5-column GQL with
+// id(e), reshapes the response into a single "e" column holding *Edge.
+// Use response.Alias("e").AsEdges() — symmetric with the node path.
+func (c *Client) DeleteEdgesByIDs(ctx context.Context, edgeIDs []string, config *DeleteConfig) (*Response, error) {
+	cfg := normalizeDeleteConfig(config)
+	if len(edgeIDs) == 0 {
+		return &Response{}, nil
+	}
+	gql := "MATCH ()-[e]->() WHERE id(e) IN [" + formatStringList(edgeIDs) + "] DELETE e"
+	if cfg.ReturnDeleted {
+		gql += " RETURN id(e), e._from, e._to, labels(e)[0], properties(e)"
+	}
+	raw, err := c.Gql(ctx, gql, deleteConfigToQueryConfig(cfg))
+	if err != nil || !cfg.ReturnDeleted {
+		return raw, err
+	}
+	return reshapeEdgeDelete(raw), nil
+}
+
+// DeleteEdgesByCondition deletes edges matching label and/or where.
+// Emits 5-column GQL with optional LIMIT, then reshapes into single
+// "e" column.  `limit <= 0` = no cap.
+func (c *Client) DeleteEdgesByCondition(ctx context.Context, label string, where string, limit int, config *DeleteConfig) (*Response, error) {
+	cfg := normalizeDeleteConfig(config)
+	noLabel := label == ""
+	noWhere := strings.TrimSpace(where) == ""
+	if noLabel && noWhere && !cfg.AllowDeleteAll {
+		return nil, fmt.Errorf(
+			"DeleteEdgesByCondition with no label and no where would delete every " +
+				"edge in the graph. If this is intentional, set DeleteConfig.AllowDeleteAll = true")
+	}
+	gql := "MATCH ()-[e"
+	if !noLabel {
+		gql += ":`" + label + "`"
+	}
+	gql += "]->()"
+	if !noWhere {
+		gql += " WHERE " + where
+	}
+	if limit > 0 {
+		gql += fmt.Sprintf(" LIMIT %d", limit)
+	}
+	gql += " DELETE e"
+	if cfg.ReturnDeleted {
+		gql += " RETURN id(e), e._from, e._to, labels(e)[0], properties(e)"
+	}
+	raw, err := c.Gql(ctx, gql, deleteConfigToQueryConfig(cfg))
+	if err != nil || !cfg.ReturnDeleted {
+		return raw, err
+	}
+	return reshapeEdgeDelete(raw), nil
+}
+
+// normalizeDeleteConfig returns a non-nil *DeleteConfig with sane
+// defaults. Passing nil yields ReturnDeleted=true; passing a non-nil
+// config returns it unchanged so caller-set values win.
+func normalizeDeleteConfig(c *DeleteConfig) *DeleteConfig {
+	if c == nil {
+		return types.NewDeleteConfig()
+	}
+	return c
+}
+
+func deleteConfigToQueryConfig(dc *DeleteConfig) *types.QueryConfig {
+	if dc == nil {
+		return nil
+	}
+	qc := dc.QueryConfig
+	return &qc
+}
+
+// formatStringList escapes single quotes and backslashes for safe GQL
+// injection, returning `'id1', 'id2', ...`.
+func formatStringList(ids []string) string {
+	var sb strings.Builder
+	for i, id := range ids {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteByte('\'')
+		for _, ch := range id {
+			if ch == '\'' || ch == '\\' {
+				sb.WriteByte('\\')
+			}
+			sb.WriteRune(ch)
+		}
+		sb.WriteByte('\'')
+	}
+	return sb.String()
+}
+
+// reshapeEdgeDelete converts a raw 5-column edge-delete Response
+// (id(e), _from, _to, labels(e)[0], properties(e)) into a single
+// "e" column holding *Edge — symmetric with the node path.
+// Rows with a null id are skipped.
+func reshapeEdgeDelete(raw *Response) *Response {
+	out := &Response{
+		Columns:      []string{"e"},
+		Rows:         nil,
+		HasMore:      raw.HasMore,
+		Warnings:     raw.Warnings,
+		RowsAffected: raw.RowsAffected,
+		CurrentGraph: raw.CurrentGraph,
+	}
+	for _, r := range raw.Rows {
+		if len(r.Values) == 0 {
+			continue
+		}
+		idTv := r.Values[0]
+		if idTv == nil || idTv.IsNull {
+			continue
+		}
+		idV, _ := idTv.ToGo()
+		idStr, _ := idV.(string)
+		if idStr == "" {
+			continue
+		}
+		var fromStr, toStr, labelStr string
+		props := map[string]interface{}{}
+		if len(r.Values) > 1 && r.Values[1] != nil && !r.Values[1].IsNull {
+			if v, _ := r.Values[1].ToGo(); v != nil {
+				fromStr, _ = v.(string)
+			}
+		}
+		if len(r.Values) > 2 && r.Values[2] != nil && !r.Values[2].IsNull {
+			if v, _ := r.Values[2].ToGo(); v != nil {
+				toStr, _ = v.(string)
+			}
+		}
+		if len(r.Values) > 3 && r.Values[3] != nil && !r.Values[3].IsNull {
+			if v, _ := r.Values[3].ToGo(); v != nil {
+				labelStr, _ = v.(string)
+			}
+		}
+		if len(r.Values) > 4 && r.Values[4] != nil && !r.Values[4].IsNull {
+			if v, _ := r.Values[4].ToGo(); v != nil {
+				if m, ok := v.(map[string]interface{}); ok {
+					props = m
+				}
+			}
+		}
+		edge := &Edge{
+			ID:         idStr,
+			Label:      labelStr,
+			FromNodeID: fromStr,
+			ToNodeID:   toStr,
+			Properties: props,
+		}
+		out.Rows = append(out.Rows, &Row{Values: []*types.TypedValue{
+			types.FromGo(types.PropertyTypeEdge, edge),
+		}})
+	}
+	out.RowCount = int64(len(out.Rows))
+	return out
 }
 
 // Export exports graph data in JSON Lines format (streaming).

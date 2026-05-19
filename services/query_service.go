@@ -61,6 +61,14 @@ type Response struct {
 	// against a pre-fix server, which the driver detects to fall back
 	// to its USE GRAPH text-parsing path.
 	CurrentGraph string
+	// Server-side timing (nanoseconds), read from the engine's
+	// ResultSet. Network / client-side time is NOT included. Old
+	// servers omit these proto3 fields → 0 means "not reported", not
+	// "took zero time". Streaming queries populate only on the final
+	// batch (HasMore=false) — matches CurrentGraph / RowsAffected.
+	TimeCostNs    int64
+	DiskCostNs    int64
+	ComputeCostNs int64
 }
 
 // Row represents a result row (mirrors main package).
@@ -168,6 +176,20 @@ func (s *QueryService) gqlStreamCollect(ctx context.Context, query string, confi
 		merged.Warnings = append(merged.Warnings, chunk.Warnings...)
 		if chunk.RowsAffected != 0 {
 			merged.RowsAffected = chunk.RowsAffected
+		}
+		// Server populates timing / current_graph only on the final
+		// batch (has_more=false); take the latest non-zero value.
+		if chunk.CurrentGraph != "" {
+			merged.CurrentGraph = chunk.CurrentGraph
+		}
+		if chunk.TimeCostNs != 0 {
+			merged.TimeCostNs = chunk.TimeCostNs
+		}
+		if chunk.DiskCostNs != 0 {
+			merged.DiskCostNs = chunk.DiskCostNs
+		}
+		if chunk.ComputeCostNs != 0 {
+			merged.ComputeCostNs = chunk.ComputeCostNs
 		}
 		return nil
 	}, newParameter, getDefaultGraph, getTimeout)
@@ -332,12 +354,15 @@ func (s *QueryService) convertGqlResponse(resp *pb.GqlResponse) (*Response, erro
 	}
 
 	return &Response{
-		Columns:      resp.Columns,
-		Rows:         rows,
-		RowCount:     resp.RowCount,
-		HasMore:      resp.HasMore,
-		Warnings:     resp.Warnings,
-		RowsAffected: resp.RowsAffected,
-		CurrentGraph: resp.CurrentGraph,
+		Columns:       resp.Columns,
+		Rows:          rows,
+		RowCount:      resp.RowCount,
+		HasMore:       resp.HasMore,
+		Warnings:      resp.Warnings,
+		RowsAffected:  resp.RowsAffected,
+		CurrentGraph:  resp.CurrentGraph,
+		TimeCostNs:    resp.TimeCostNs,
+		DiskCostNs:    resp.DiskCostNs,
+		ComputeCostNs: resp.ComputeCostNs,
 	}, nil
 }

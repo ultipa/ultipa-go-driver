@@ -25,6 +25,20 @@ type Response struct {
 	// its USE GRAPH text-parsing path internally to keep the local
 	// session.DefaultGraph cache in sync.
 	CurrentGraph string
+	// Server-side timing (nanoseconds), read from the engine's
+	// ResultSet. Network / client-side time is NOT included.
+	//   - TimeCostNs:    total wall-clock parse + plan + execute
+	//   - DiskCostNs:    subset spent in storage / LSM layer
+	//   - ComputeCostNs: subset spent in the in-memory compute engine
+	//                    (k-hop, shortest path, algo.* via topology
+	//                    accelerator); 0 when compute is disabled or
+	//                    the query path did not invoke the accelerator.
+	// Old servers omit these proto3 fields → treat 0 as "not reported",
+	// not "took zero time". Streaming queries populate only on the
+	// final batch (HasMore=false), matching CurrentGraph / RowsAffected.
+	TimeCostNs    int64
+	DiskCostNs    int64
+	ComputeCostNs int64
 }
 
 // Row represents a single row in the query result.

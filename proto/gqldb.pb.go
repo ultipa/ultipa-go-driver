@@ -985,7 +985,38 @@ type GqlResponse struct {
 	// this empty; drivers fall back to text parsing in that case.
 	// Streaming GqlStream populates only on the final batch
 	// (has_more=false); intermediate batches leave it empty.
-	CurrentGraph  string `protobuf:"bytes,7,opt,name=current_graph,json=currentGraph,proto3" json:"current_graph,omitempty"`
+	CurrentGraph string `protobuf:"bytes,7,opt,name=current_graph,json=currentGraph,proto3" json:"current_graph,omitempty"`
+	// Server-side timing of the underlying query, in nanoseconds. Values
+	// are read from the source DB's ResultSet (TimeCost/DiskCost/
+	// ComputeCost). Network and client-side time are NOT included —
+	// these measure only what the engine spent inside QueryContext.
+	//
+	//   - time_cost_ns:    total wall-clock for parse + plan + execute.
+	//   - disk_cost_ns:    subset of time_cost_ns spent in the storage /
+	//     LSM layer (cursors, point lookups, index
+	//     reads).
+	//   - compute_cost_ns: subset of time_cost_ns spent in the in-memory
+	//     compute engine (k-hop, shortest path, algo.*
+	//     procedures via the topology accelerator).
+	//     Zero when the graph has compute DISABLED or
+	//     the query path did not invoke the accelerator.
+	//
+	// The three are not mutually exclusive of all of time_cost_ns —
+	// (time_cost_ns - disk_cost_ns - compute_cost_ns) is the "other"
+	// bucket (parser, planner, RBAC, result marshaling).
+	//
+	// Streaming: populated only on the final batch (has_more=false),
+	// matching the current_graph / rows_affected pattern. Intermediate
+	// batches leave them zero — TimeCost is only valid after iteration
+	// has completed. Drivers should read the values from the final
+	// frame.
+	//
+	// Proto3 additive: pre-change drivers ignore these fields. Old
+	// servers omit them, so new drivers must treat zero as "not
+	// reported" and not "query took zero time".
+	TimeCostNs    int64 `protobuf:"varint,8,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,9,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,10,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1067,6 +1098,27 @@ func (x *GqlResponse) GetCurrentGraph() string {
 		return x.CurrentGraph
 	}
 	return ""
+}
+
+func (x *GqlResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *GqlResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *GqlResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
 }
 
 type ExplainResponse struct {
@@ -1675,262 +1727,6 @@ func (x *InsertEdgesResponse) GetSkippedCount() int64 {
 	return 0
 }
 
-type DeleteNodesRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	GraphName     string                 `protobuf:"bytes,1,opt,name=graph_name,json=graphName,proto3" json:"graph_name,omitempty"`
-	NodeIds       []string               `protobuf:"bytes,2,rep,name=node_ids,json=nodeIds,proto3" json:"node_ids,omitempty"`
-	Labels        []string               `protobuf:"bytes,3,rep,name=labels,proto3" json:"labels,omitempty"`
-	Where         string                 `protobuf:"bytes,4,opt,name=where,proto3" json:"where,omitempty"` // Optional WHERE clause
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DeleteNodesRequest) Reset() {
-	*x = DeleteNodesRequest{}
-	mi := &file_gqldb_proto_msgTypes[21]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DeleteNodesRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DeleteNodesRequest) ProtoMessage() {}
-
-func (x *DeleteNodesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[21]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DeleteNodesRequest.ProtoReflect.Descriptor instead.
-func (*DeleteNodesRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{21}
-}
-
-func (x *DeleteNodesRequest) GetGraphName() string {
-	if x != nil {
-		return x.GraphName
-	}
-	return ""
-}
-
-func (x *DeleteNodesRequest) GetNodeIds() []string {
-	if x != nil {
-		return x.NodeIds
-	}
-	return nil
-}
-
-func (x *DeleteNodesRequest) GetLabels() []string {
-	if x != nil {
-		return x.Labels
-	}
-	return nil
-}
-
-func (x *DeleteNodesRequest) GetWhere() string {
-	if x != nil {
-		return x.Where
-	}
-	return ""
-}
-
-type DeleteNodesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	DeletedCount  int64                  `protobuf:"varint,2,opt,name=deleted_count,json=deletedCount,proto3" json:"deleted_count,omitempty"`
-	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DeleteNodesResponse) Reset() {
-	*x = DeleteNodesResponse{}
-	mi := &file_gqldb_proto_msgTypes[22]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DeleteNodesResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DeleteNodesResponse) ProtoMessage() {}
-
-func (x *DeleteNodesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[22]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DeleteNodesResponse.ProtoReflect.Descriptor instead.
-func (*DeleteNodesResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{22}
-}
-
-func (x *DeleteNodesResponse) GetSuccess() bool {
-	if x != nil {
-		return x.Success
-	}
-	return false
-}
-
-func (x *DeleteNodesResponse) GetDeletedCount() int64 {
-	if x != nil {
-		return x.DeletedCount
-	}
-	return 0
-}
-
-func (x *DeleteNodesResponse) GetMessage() string {
-	if x != nil {
-		return x.Message
-	}
-	return ""
-}
-
-type DeleteEdgesRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	GraphName     string                 `protobuf:"bytes,1,opt,name=graph_name,json=graphName,proto3" json:"graph_name,omitempty"`
-	EdgeIds       []string               `protobuf:"bytes,2,rep,name=edge_ids,json=edgeIds,proto3" json:"edge_ids,omitempty"`
-	Label         string                 `protobuf:"bytes,3,opt,name=label,proto3" json:"label,omitempty"`
-	Where         string                 `protobuf:"bytes,4,opt,name=where,proto3" json:"where,omitempty"` // Optional WHERE clause
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DeleteEdgesRequest) Reset() {
-	*x = DeleteEdgesRequest{}
-	mi := &file_gqldb_proto_msgTypes[23]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DeleteEdgesRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DeleteEdgesRequest) ProtoMessage() {}
-
-func (x *DeleteEdgesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[23]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DeleteEdgesRequest.ProtoReflect.Descriptor instead.
-func (*DeleteEdgesRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{23}
-}
-
-func (x *DeleteEdgesRequest) GetGraphName() string {
-	if x != nil {
-		return x.GraphName
-	}
-	return ""
-}
-
-func (x *DeleteEdgesRequest) GetEdgeIds() []string {
-	if x != nil {
-		return x.EdgeIds
-	}
-	return nil
-}
-
-func (x *DeleteEdgesRequest) GetLabel() string {
-	if x != nil {
-		return x.Label
-	}
-	return ""
-}
-
-func (x *DeleteEdgesRequest) GetWhere() string {
-	if x != nil {
-		return x.Where
-	}
-	return ""
-}
-
-type DeleteEdgesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	DeletedCount  int64                  `protobuf:"varint,2,opt,name=deleted_count,json=deletedCount,proto3" json:"deleted_count,omitempty"`
-	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DeleteEdgesResponse) Reset() {
-	*x = DeleteEdgesResponse{}
-	mi := &file_gqldb_proto_msgTypes[24]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DeleteEdgesResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DeleteEdgesResponse) ProtoMessage() {}
-
-func (x *DeleteEdgesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[24]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DeleteEdgesResponse.ProtoReflect.Descriptor instead.
-func (*DeleteEdgesResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{24}
-}
-
-func (x *DeleteEdgesResponse) GetSuccess() bool {
-	if x != nil {
-		return x.Success
-	}
-	return false
-}
-
-func (x *DeleteEdgesResponse) GetDeletedCount() int64 {
-	if x != nil {
-		return x.DeletedCount
-	}
-	return 0
-}
-
-func (x *DeleteEdgesResponse) GetMessage() string {
-	if x != nil {
-		return x.Message
-	}
-	return ""
-}
-
 // ExportRequest configures the streaming export.
 type ExportRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
@@ -1947,7 +1743,7 @@ type ExportRequest struct {
 
 func (x *ExportRequest) Reset() {
 	*x = ExportRequest{}
-	mi := &file_gqldb_proto_msgTypes[25]
+	mi := &file_gqldb_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1959,7 +1755,7 @@ func (x *ExportRequest) String() string {
 func (*ExportRequest) ProtoMessage() {}
 
 func (x *ExportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[25]
+	mi := &file_gqldb_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1972,7 +1768,7 @@ func (x *ExportRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportRequest.ProtoReflect.Descriptor instead.
 func (*ExportRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{25}
+	return file_gqldb_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ExportRequest) GetGraphName() string {
@@ -2036,7 +1832,7 @@ type ExportResponse struct {
 
 func (x *ExportResponse) Reset() {
 	*x = ExportResponse{}
-	mi := &file_gqldb_proto_msgTypes[26]
+	mi := &file_gqldb_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2048,7 +1844,7 @@ func (x *ExportResponse) String() string {
 func (*ExportResponse) ProtoMessage() {}
 
 func (x *ExportResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[26]
+	mi := &file_gqldb_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2061,7 +1857,7 @@ func (x *ExportResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportResponse.ProtoReflect.Descriptor instead.
 func (*ExportResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{26}
+	return file_gqldb_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ExportResponse) GetData() []byte {
@@ -2098,7 +1894,7 @@ type ExportStats struct {
 
 func (x *ExportStats) Reset() {
 	*x = ExportStats{}
-	mi := &file_gqldb_proto_msgTypes[27]
+	mi := &file_gqldb_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2110,7 +1906,7 @@ func (x *ExportStats) String() string {
 func (*ExportStats) ProtoMessage() {}
 
 func (x *ExportStats) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[27]
+	mi := &file_gqldb_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2123,7 +1919,7 @@ func (x *ExportStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportStats.ProtoReflect.Descriptor instead.
 func (*ExportStats) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{27}
+	return file_gqldb_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ExportStats) GetNodesExported() int64 {
@@ -2165,7 +1961,7 @@ type CreateGraphRequest struct {
 
 func (x *CreateGraphRequest) Reset() {
 	*x = CreateGraphRequest{}
-	mi := &file_gqldb_proto_msgTypes[28]
+	mi := &file_gqldb_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2177,7 +1973,7 @@ func (x *CreateGraphRequest) String() string {
 func (*CreateGraphRequest) ProtoMessage() {}
 
 func (x *CreateGraphRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[28]
+	mi := &file_gqldb_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2190,7 +1986,7 @@ func (x *CreateGraphRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateGraphRequest.ProtoReflect.Descriptor instead.
 func (*CreateGraphRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{28}
+	return file_gqldb_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *CreateGraphRequest) GetName() string {
@@ -2224,7 +2020,7 @@ type CreateGraphResponse struct {
 
 func (x *CreateGraphResponse) Reset() {
 	*x = CreateGraphResponse{}
-	mi := &file_gqldb_proto_msgTypes[29]
+	mi := &file_gqldb_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2236,7 +2032,7 @@ func (x *CreateGraphResponse) String() string {
 func (*CreateGraphResponse) ProtoMessage() {}
 
 func (x *CreateGraphResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[29]
+	mi := &file_gqldb_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2249,7 +2045,7 @@ func (x *CreateGraphResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateGraphResponse.ProtoReflect.Descriptor instead.
 func (*CreateGraphResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{29}
+	return file_gqldb_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *CreateGraphResponse) GetSuccess() bool {
@@ -2276,7 +2072,7 @@ type DropGraphRequest struct {
 
 func (x *DropGraphRequest) Reset() {
 	*x = DropGraphRequest{}
-	mi := &file_gqldb_proto_msgTypes[30]
+	mi := &file_gqldb_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2288,7 +2084,7 @@ func (x *DropGraphRequest) String() string {
 func (*DropGraphRequest) ProtoMessage() {}
 
 func (x *DropGraphRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[30]
+	mi := &file_gqldb_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2301,7 +2097,7 @@ func (x *DropGraphRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DropGraphRequest.ProtoReflect.Descriptor instead.
 func (*DropGraphRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{30}
+	return file_gqldb_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *DropGraphRequest) GetName() string {
@@ -2328,7 +2124,7 @@ type DropGraphResponse struct {
 
 func (x *DropGraphResponse) Reset() {
 	*x = DropGraphResponse{}
-	mi := &file_gqldb_proto_msgTypes[31]
+	mi := &file_gqldb_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2340,7 +2136,7 @@ func (x *DropGraphResponse) String() string {
 func (*DropGraphResponse) ProtoMessage() {}
 
 func (x *DropGraphResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[31]
+	mi := &file_gqldb_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2353,7 +2149,7 @@ func (x *DropGraphResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DropGraphResponse.ProtoReflect.Descriptor instead.
 func (*DropGraphResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{31}
+	return file_gqldb_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *DropGraphResponse) GetSuccess() bool {
@@ -2381,7 +2177,7 @@ type UseGraphRequest struct {
 
 func (x *UseGraphRequest) Reset() {
 	*x = UseGraphRequest{}
-	mi := &file_gqldb_proto_msgTypes[32]
+	mi := &file_gqldb_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2393,7 +2189,7 @@ func (x *UseGraphRequest) String() string {
 func (*UseGraphRequest) ProtoMessage() {}
 
 func (x *UseGraphRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[32]
+	mi := &file_gqldb_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2406,7 +2202,7 @@ func (x *UseGraphRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UseGraphRequest.ProtoReflect.Descriptor instead.
 func (*UseGraphRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{32}
+	return file_gqldb_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *UseGraphRequest) GetName() string {
@@ -2434,7 +2230,7 @@ type UseGraphResponse struct {
 
 func (x *UseGraphResponse) Reset() {
 	*x = UseGraphResponse{}
-	mi := &file_gqldb_proto_msgTypes[33]
+	mi := &file_gqldb_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2446,7 +2242,7 @@ func (x *UseGraphResponse) String() string {
 func (*UseGraphResponse) ProtoMessage() {}
 
 func (x *UseGraphResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[33]
+	mi := &file_gqldb_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2459,7 +2255,7 @@ func (x *UseGraphResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UseGraphResponse.ProtoReflect.Descriptor instead.
 func (*UseGraphResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{33}
+	return file_gqldb_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *UseGraphResponse) GetSuccess() bool {
@@ -2484,7 +2280,7 @@ type ListGraphsRequest struct {
 
 func (x *ListGraphsRequest) Reset() {
 	*x = ListGraphsRequest{}
-	mi := &file_gqldb_proto_msgTypes[34]
+	mi := &file_gqldb_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2496,7 +2292,7 @@ func (x *ListGraphsRequest) String() string {
 func (*ListGraphsRequest) ProtoMessage() {}
 
 func (x *ListGraphsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[34]
+	mi := &file_gqldb_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2509,7 +2305,7 @@ func (x *ListGraphsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGraphsRequest.ProtoReflect.Descriptor instead.
 func (*ListGraphsRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{34}
+	return file_gqldb_proto_rawDescGZIP(), []int{30}
 }
 
 type ListGraphsResponse struct {
@@ -2521,7 +2317,7 @@ type ListGraphsResponse struct {
 
 func (x *ListGraphsResponse) Reset() {
 	*x = ListGraphsResponse{}
-	mi := &file_gqldb_proto_msgTypes[35]
+	mi := &file_gqldb_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2533,7 +2329,7 @@ func (x *ListGraphsResponse) String() string {
 func (*ListGraphsResponse) ProtoMessage() {}
 
 func (x *ListGraphsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[35]
+	mi := &file_gqldb_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2546,7 +2342,7 @@ func (x *ListGraphsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGraphsResponse.ProtoReflect.Descriptor instead.
 func (*ListGraphsResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{35}
+	return file_gqldb_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *ListGraphsResponse) GetGraphs() []*GraphInfo {
@@ -2565,7 +2361,7 @@ type GetGraphInfoRequest struct {
 
 func (x *GetGraphInfoRequest) Reset() {
 	*x = GetGraphInfoRequest{}
-	mi := &file_gqldb_proto_msgTypes[36]
+	mi := &file_gqldb_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2577,7 +2373,7 @@ func (x *GetGraphInfoRequest) String() string {
 func (*GetGraphInfoRequest) ProtoMessage() {}
 
 func (x *GetGraphInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[36]
+	mi := &file_gqldb_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2590,7 +2386,7 @@ func (x *GetGraphInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGraphInfoRequest.ProtoReflect.Descriptor instead.
 func (*GetGraphInfoRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{36}
+	return file_gqldb_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *GetGraphInfoRequest) GetName() string {
@@ -2609,7 +2405,7 @@ type GetGraphInfoResponse struct {
 
 func (x *GetGraphInfoResponse) Reset() {
 	*x = GetGraphInfoResponse{}
-	mi := &file_gqldb_proto_msgTypes[37]
+	mi := &file_gqldb_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2621,7 +2417,7 @@ func (x *GetGraphInfoResponse) String() string {
 func (*GetGraphInfoResponse) ProtoMessage() {}
 
 func (x *GetGraphInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[37]
+	mi := &file_gqldb_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2634,7 +2430,7 @@ func (x *GetGraphInfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGraphInfoResponse.ProtoReflect.Descriptor instead.
 func (*GetGraphInfoResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{37}
+	return file_gqldb_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *GetGraphInfoResponse) GetInfo() *GraphInfo {
@@ -2657,7 +2453,7 @@ type GraphInfo struct {
 
 func (x *GraphInfo) Reset() {
 	*x = GraphInfo{}
-	mi := &file_gqldb_proto_msgTypes[38]
+	mi := &file_gqldb_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2669,7 +2465,7 @@ func (x *GraphInfo) String() string {
 func (*GraphInfo) ProtoMessage() {}
 
 func (x *GraphInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[38]
+	mi := &file_gqldb_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2682,7 +2478,7 @@ func (x *GraphInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GraphInfo.ProtoReflect.Descriptor instead.
 func (*GraphInfo) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{38}
+	return file_gqldb_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *GraphInfo) GetName() string {
@@ -2733,7 +2529,7 @@ type BeginRequest struct {
 
 func (x *BeginRequest) Reset() {
 	*x = BeginRequest{}
-	mi := &file_gqldb_proto_msgTypes[39]
+	mi := &file_gqldb_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2745,7 +2541,7 @@ func (x *BeginRequest) String() string {
 func (*BeginRequest) ProtoMessage() {}
 
 func (x *BeginRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[39]
+	mi := &file_gqldb_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2758,7 +2554,7 @@ func (x *BeginRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BeginRequest.ProtoReflect.Descriptor instead.
 func (*BeginRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{39}
+	return file_gqldb_proto_rawDescGZIP(), []int{35}
 }
 
 // Deprecated: Marked as deprecated in gqldb.proto.
@@ -2800,7 +2596,7 @@ type BeginResponse struct {
 
 func (x *BeginResponse) Reset() {
 	*x = BeginResponse{}
-	mi := &file_gqldb_proto_msgTypes[40]
+	mi := &file_gqldb_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2812,7 +2608,7 @@ func (x *BeginResponse) String() string {
 func (*BeginResponse) ProtoMessage() {}
 
 func (x *BeginResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[40]
+	mi := &file_gqldb_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2825,7 +2621,7 @@ func (x *BeginResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BeginResponse.ProtoReflect.Descriptor instead.
 func (*BeginResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{40}
+	return file_gqldb_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *BeginResponse) GetTransactionId() uint64 {
@@ -2853,7 +2649,7 @@ type CommitRequest struct {
 
 func (x *CommitRequest) Reset() {
 	*x = CommitRequest{}
-	mi := &file_gqldb_proto_msgTypes[41]
+	mi := &file_gqldb_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2865,7 +2661,7 @@ func (x *CommitRequest) String() string {
 func (*CommitRequest) ProtoMessage() {}
 
 func (x *CommitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[41]
+	mi := &file_gqldb_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2878,7 +2674,7 @@ func (x *CommitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommitRequest.ProtoReflect.Descriptor instead.
 func (*CommitRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{41}
+	return file_gqldb_proto_rawDescGZIP(), []int{37}
 }
 
 // Deprecated: Marked as deprecated in gqldb.proto.
@@ -2906,7 +2702,7 @@ type CommitResponse struct {
 
 func (x *CommitResponse) Reset() {
 	*x = CommitResponse{}
-	mi := &file_gqldb_proto_msgTypes[42]
+	mi := &file_gqldb_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2918,7 +2714,7 @@ func (x *CommitResponse) String() string {
 func (*CommitResponse) ProtoMessage() {}
 
 func (x *CommitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[42]
+	mi := &file_gqldb_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2931,7 +2727,7 @@ func (x *CommitResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommitResponse.ProtoReflect.Descriptor instead.
 func (*CommitResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{42}
+	return file_gqldb_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *CommitResponse) GetSuccess() bool {
@@ -2959,7 +2755,7 @@ type RollbackRequest struct {
 
 func (x *RollbackRequest) Reset() {
 	*x = RollbackRequest{}
-	mi := &file_gqldb_proto_msgTypes[43]
+	mi := &file_gqldb_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2971,7 +2767,7 @@ func (x *RollbackRequest) String() string {
 func (*RollbackRequest) ProtoMessage() {}
 
 func (x *RollbackRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[43]
+	mi := &file_gqldb_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2984,7 +2780,7 @@ func (x *RollbackRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollbackRequest.ProtoReflect.Descriptor instead.
 func (*RollbackRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{43}
+	return file_gqldb_proto_rawDescGZIP(), []int{39}
 }
 
 // Deprecated: Marked as deprecated in gqldb.proto.
@@ -3012,7 +2808,7 @@ type RollbackResponse struct {
 
 func (x *RollbackResponse) Reset() {
 	*x = RollbackResponse{}
-	mi := &file_gqldb_proto_msgTypes[44]
+	mi := &file_gqldb_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3024,7 +2820,7 @@ func (x *RollbackResponse) String() string {
 func (*RollbackResponse) ProtoMessage() {}
 
 func (x *RollbackResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[44]
+	mi := &file_gqldb_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3037,7 +2833,7 @@ func (x *RollbackResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollbackResponse.ProtoReflect.Descriptor instead.
 func (*RollbackResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{44}
+	return file_gqldb_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *RollbackResponse) GetSuccess() bool {
@@ -3065,7 +2861,7 @@ type ListTransactionsRequest struct {
 
 func (x *ListTransactionsRequest) Reset() {
 	*x = ListTransactionsRequest{}
-	mi := &file_gqldb_proto_msgTypes[45]
+	mi := &file_gqldb_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3077,7 +2873,7 @@ func (x *ListTransactionsRequest) String() string {
 func (*ListTransactionsRequest) ProtoMessage() {}
 
 func (x *ListTransactionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[45]
+	mi := &file_gqldb_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3090,7 +2886,7 @@ func (x *ListTransactionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTransactionsRequest.ProtoReflect.Descriptor instead.
 func (*ListTransactionsRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{45}
+	return file_gqldb_proto_rawDescGZIP(), []int{41}
 }
 
 // Deprecated: Marked as deprecated in gqldb.proto.
@@ -3117,7 +2913,7 @@ type ListTransactionsResponse struct {
 
 func (x *ListTransactionsResponse) Reset() {
 	*x = ListTransactionsResponse{}
-	mi := &file_gqldb_proto_msgTypes[46]
+	mi := &file_gqldb_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3129,7 +2925,7 @@ func (x *ListTransactionsResponse) String() string {
 func (*ListTransactionsResponse) ProtoMessage() {}
 
 func (x *ListTransactionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[46]
+	mi := &file_gqldb_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3142,7 +2938,7 @@ func (x *ListTransactionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTransactionsResponse.ProtoReflect.Descriptor instead.
 func (*ListTransactionsResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{46}
+	return file_gqldb_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *ListTransactionsResponse) GetTransactions() []*TransactionInfo {
@@ -3167,7 +2963,7 @@ type TransactionInfo struct {
 
 func (x *TransactionInfo) Reset() {
 	*x = TransactionInfo{}
-	mi := &file_gqldb_proto_msgTypes[47]
+	mi := &file_gqldb_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3179,7 +2975,7 @@ func (x *TransactionInfo) String() string {
 func (*TransactionInfo) ProtoMessage() {}
 
 func (x *TransactionInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[47]
+	mi := &file_gqldb_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3192,7 +2988,7 @@ func (x *TransactionInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransactionInfo.ProtoReflect.Descriptor instead.
 func (*TransactionInfo) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{47}
+	return file_gqldb_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *TransactionInfo) GetTransactionId() uint64 {
@@ -3253,7 +3049,7 @@ type HealthCheckRequest struct {
 
 func (x *HealthCheckRequest) Reset() {
 	*x = HealthCheckRequest{}
-	mi := &file_gqldb_proto_msgTypes[48]
+	mi := &file_gqldb_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3265,7 +3061,7 @@ func (x *HealthCheckRequest) String() string {
 func (*HealthCheckRequest) ProtoMessage() {}
 
 func (x *HealthCheckRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[48]
+	mi := &file_gqldb_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3278,7 +3074,7 @@ func (x *HealthCheckRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthCheckRequest.ProtoReflect.Descriptor instead.
 func (*HealthCheckRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{48}
+	return file_gqldb_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *HealthCheckRequest) GetService() string {
@@ -3297,7 +3093,7 @@ type HealthCheckResponse struct {
 
 func (x *HealthCheckResponse) Reset() {
 	*x = HealthCheckResponse{}
-	mi := &file_gqldb_proto_msgTypes[49]
+	mi := &file_gqldb_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3309,7 +3105,7 @@ func (x *HealthCheckResponse) String() string {
 func (*HealthCheckResponse) ProtoMessage() {}
 
 func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[49]
+	mi := &file_gqldb_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3322,7 +3118,7 @@ func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthCheckResponse.ProtoReflect.Descriptor instead.
 func (*HealthCheckResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{49}
+	return file_gqldb_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *HealthCheckResponse) GetStatus() HealthStatus {
@@ -3341,7 +3137,7 @@ type WarmupParserRequest struct {
 
 func (x *WarmupParserRequest) Reset() {
 	*x = WarmupParserRequest{}
-	mi := &file_gqldb_proto_msgTypes[50]
+	mi := &file_gqldb_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3353,7 +3149,7 @@ func (x *WarmupParserRequest) String() string {
 func (*WarmupParserRequest) ProtoMessage() {}
 
 func (x *WarmupParserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[50]
+	mi := &file_gqldb_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3366,7 +3162,7 @@ func (x *WarmupParserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WarmupParserRequest.ProtoReflect.Descriptor instead.
 func (*WarmupParserRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{50}
+	return file_gqldb_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *WarmupParserRequest) GetCount() int32 {
@@ -3386,7 +3182,7 @@ type WarmupParserResponse struct {
 
 func (x *WarmupParserResponse) Reset() {
 	*x = WarmupParserResponse{}
-	mi := &file_gqldb_proto_msgTypes[51]
+	mi := &file_gqldb_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3398,7 +3194,7 @@ func (x *WarmupParserResponse) String() string {
 func (*WarmupParserResponse) ProtoMessage() {}
 
 func (x *WarmupParserResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[51]
+	mi := &file_gqldb_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3411,7 +3207,7 @@ func (x *WarmupParserResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WarmupParserResponse.ProtoReflect.Descriptor instead.
 func (*WarmupParserResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{51}
+	return file_gqldb_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *WarmupParserResponse) GetSuccess() bool {
@@ -3437,7 +3233,7 @@ type GetCacheStatsRequest struct {
 
 func (x *GetCacheStatsRequest) Reset() {
 	*x = GetCacheStatsRequest{}
-	mi := &file_gqldb_proto_msgTypes[52]
+	mi := &file_gqldb_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3449,7 +3245,7 @@ func (x *GetCacheStatsRequest) String() string {
 func (*GetCacheStatsRequest) ProtoMessage() {}
 
 func (x *GetCacheStatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[52]
+	mi := &file_gqldb_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3462,7 +3258,7 @@ func (x *GetCacheStatsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCacheStatsRequest.ProtoReflect.Descriptor instead.
 func (*GetCacheStatsRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{52}
+	return file_gqldb_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *GetCacheStatsRequest) GetCacheType() CacheType {
@@ -3482,7 +3278,7 @@ type CacheStatsResponse struct {
 
 func (x *CacheStatsResponse) Reset() {
 	*x = CacheStatsResponse{}
-	mi := &file_gqldb_proto_msgTypes[53]
+	mi := &file_gqldb_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3494,7 +3290,7 @@ func (x *CacheStatsResponse) String() string {
 func (*CacheStatsResponse) ProtoMessage() {}
 
 func (x *CacheStatsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[53]
+	mi := &file_gqldb_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3507,7 +3303,7 @@ func (x *CacheStatsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CacheStatsResponse.ProtoReflect.Descriptor instead.
 func (*CacheStatsResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{53}
+	return file_gqldb_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *CacheStatsResponse) GetAstStats() *ASTCacheStats {
@@ -3537,7 +3333,7 @@ type ASTCacheStats struct {
 
 func (x *ASTCacheStats) Reset() {
 	*x = ASTCacheStats{}
-	mi := &file_gqldb_proto_msgTypes[54]
+	mi := &file_gqldb_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3549,7 +3345,7 @@ func (x *ASTCacheStats) String() string {
 func (*ASTCacheStats) ProtoMessage() {}
 
 func (x *ASTCacheStats) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[54]
+	mi := &file_gqldb_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3562,7 +3358,7 @@ func (x *ASTCacheStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ASTCacheStats.ProtoReflect.Descriptor instead.
 func (*ASTCacheStats) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{54}
+	return file_gqldb_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *ASTCacheStats) GetHits() uint64 {
@@ -3613,7 +3409,7 @@ type PlanCacheStats struct {
 
 func (x *PlanCacheStats) Reset() {
 	*x = PlanCacheStats{}
-	mi := &file_gqldb_proto_msgTypes[55]
+	mi := &file_gqldb_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3625,7 +3421,7 @@ func (x *PlanCacheStats) String() string {
 func (*PlanCacheStats) ProtoMessage() {}
 
 func (x *PlanCacheStats) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[55]
+	mi := &file_gqldb_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3638,7 +3434,7 @@ func (x *PlanCacheStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanCacheStats.ProtoReflect.Descriptor instead.
 func (*PlanCacheStats) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{55}
+	return file_gqldb_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *PlanCacheStats) GetSize() int32 {
@@ -3685,7 +3481,7 @@ type ClearCacheRequest struct {
 
 func (x *ClearCacheRequest) Reset() {
 	*x = ClearCacheRequest{}
-	mi := &file_gqldb_proto_msgTypes[56]
+	mi := &file_gqldb_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3697,7 +3493,7 @@ func (x *ClearCacheRequest) String() string {
 func (*ClearCacheRequest) ProtoMessage() {}
 
 func (x *ClearCacheRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[56]
+	mi := &file_gqldb_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3710,7 +3506,7 @@ func (x *ClearCacheRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClearCacheRequest.ProtoReflect.Descriptor instead.
 func (*ClearCacheRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{56}
+	return file_gqldb_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *ClearCacheRequest) GetCacheType() CacheType {
@@ -3730,7 +3526,7 @@ type ClearCacheResponse struct {
 
 func (x *ClearCacheResponse) Reset() {
 	*x = ClearCacheResponse{}
-	mi := &file_gqldb_proto_msgTypes[57]
+	mi := &file_gqldb_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3742,7 +3538,7 @@ func (x *ClearCacheResponse) String() string {
 func (*ClearCacheResponse) ProtoMessage() {}
 
 func (x *ClearCacheResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[57]
+	mi := &file_gqldb_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3755,7 +3551,7 @@ func (x *ClearCacheResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClearCacheResponse.ProtoReflect.Descriptor instead.
 func (*ClearCacheResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{57}
+	return file_gqldb_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *ClearCacheResponse) GetSuccess() bool {
@@ -3781,7 +3577,7 @@ type GetStatisticsRequest struct {
 
 func (x *GetStatisticsRequest) Reset() {
 	*x = GetStatisticsRequest{}
-	mi := &file_gqldb_proto_msgTypes[58]
+	mi := &file_gqldb_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3793,7 +3589,7 @@ func (x *GetStatisticsRequest) String() string {
 func (*GetStatisticsRequest) ProtoMessage() {}
 
 func (x *GetStatisticsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[58]
+	mi := &file_gqldb_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3806,7 +3602,7 @@ func (x *GetStatisticsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStatisticsRequest.ProtoReflect.Descriptor instead.
 func (*GetStatisticsRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{58}
+	return file_gqldb_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *GetStatisticsRequest) GetGraphName() string {
@@ -3828,7 +3624,7 @@ type GetStatisticsResponse struct {
 
 func (x *GetStatisticsResponse) Reset() {
 	*x = GetStatisticsResponse{}
-	mi := &file_gqldb_proto_msgTypes[59]
+	mi := &file_gqldb_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3840,7 +3636,7 @@ func (x *GetStatisticsResponse) String() string {
 func (*GetStatisticsResponse) ProtoMessage() {}
 
 func (x *GetStatisticsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[59]
+	mi := &file_gqldb_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3853,7 +3649,7 @@ func (x *GetStatisticsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStatisticsResponse.ProtoReflect.Descriptor instead.
 func (*GetStatisticsResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{59}
+	return file_gqldb_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *GetStatisticsResponse) GetNodeCount() uint64 {
@@ -3893,7 +3689,7 @@ type InvalidatePermissionCacheRequest struct {
 
 func (x *InvalidatePermissionCacheRequest) Reset() {
 	*x = InvalidatePermissionCacheRequest{}
-	mi := &file_gqldb_proto_msgTypes[60]
+	mi := &file_gqldb_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3905,7 +3701,7 @@ func (x *InvalidatePermissionCacheRequest) String() string {
 func (*InvalidatePermissionCacheRequest) ProtoMessage() {}
 
 func (x *InvalidatePermissionCacheRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[60]
+	mi := &file_gqldb_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3918,7 +3714,7 @@ func (x *InvalidatePermissionCacheRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InvalidatePermissionCacheRequest.ProtoReflect.Descriptor instead.
 func (*InvalidatePermissionCacheRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{60}
+	return file_gqldb_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *InvalidatePermissionCacheRequest) GetUsername() string {
@@ -3937,7 +3733,7 @@ type InvalidatePermissionCacheResponse struct {
 
 func (x *InvalidatePermissionCacheResponse) Reset() {
 	*x = InvalidatePermissionCacheResponse{}
-	mi := &file_gqldb_proto_msgTypes[61]
+	mi := &file_gqldb_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3949,7 +3745,7 @@ func (x *InvalidatePermissionCacheResponse) String() string {
 func (*InvalidatePermissionCacheResponse) ProtoMessage() {}
 
 func (x *InvalidatePermissionCacheResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[61]
+	mi := &file_gqldb_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3962,7 +3758,7 @@ func (x *InvalidatePermissionCacheResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use InvalidatePermissionCacheResponse.ProtoReflect.Descriptor instead.
 func (*InvalidatePermissionCacheResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{61}
+	return file_gqldb_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *InvalidatePermissionCacheResponse) GetSuccess() bool {
@@ -3980,7 +3776,7 @@ type CompactRequest struct {
 
 func (x *CompactRequest) Reset() {
 	*x = CompactRequest{}
-	mi := &file_gqldb_proto_msgTypes[62]
+	mi := &file_gqldb_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3992,7 +3788,7 @@ func (x *CompactRequest) String() string {
 func (*CompactRequest) ProtoMessage() {}
 
 func (x *CompactRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[62]
+	mi := &file_gqldb_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4005,7 +3801,7 @@ func (x *CompactRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompactRequest.ProtoReflect.Descriptor instead.
 func (*CompactRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{62}
+	return file_gqldb_proto_rawDescGZIP(), []int{58}
 }
 
 type CompactResponse struct {
@@ -4018,7 +3814,7 @@ type CompactResponse struct {
 
 func (x *CompactResponse) Reset() {
 	*x = CompactResponse{}
-	mi := &file_gqldb_proto_msgTypes[63]
+	mi := &file_gqldb_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4030,7 +3826,7 @@ func (x *CompactResponse) String() string {
 func (*CompactResponse) ProtoMessage() {}
 
 func (x *CompactResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[63]
+	mi := &file_gqldb_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4043,7 +3839,7 @@ func (x *CompactResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompactResponse.ProtoReflect.Descriptor instead.
 func (*CompactResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{63}
+	return file_gqldb_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *CompactResponse) GetSuccess() bool {
@@ -4070,7 +3866,7 @@ type WaitForComputeTopologyRequest struct {
 
 func (x *WaitForComputeTopologyRequest) Reset() {
 	*x = WaitForComputeTopologyRequest{}
-	mi := &file_gqldb_proto_msgTypes[64]
+	mi := &file_gqldb_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4082,7 +3878,7 @@ func (x *WaitForComputeTopologyRequest) String() string {
 func (*WaitForComputeTopologyRequest) ProtoMessage() {}
 
 func (x *WaitForComputeTopologyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[64]
+	mi := &file_gqldb_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4095,7 +3891,7 @@ func (x *WaitForComputeTopologyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WaitForComputeTopologyRequest.ProtoReflect.Descriptor instead.
 func (*WaitForComputeTopologyRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{64}
+	return file_gqldb_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *WaitForComputeTopologyRequest) GetGraphName() string {
@@ -4122,7 +3918,7 @@ type WaitForComputeTopologyResponse struct {
 
 func (x *WaitForComputeTopologyResponse) Reset() {
 	*x = WaitForComputeTopologyResponse{}
-	mi := &file_gqldb_proto_msgTypes[65]
+	mi := &file_gqldb_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4134,7 +3930,7 @@ func (x *WaitForComputeTopologyResponse) String() string {
 func (*WaitForComputeTopologyResponse) ProtoMessage() {}
 
 func (x *WaitForComputeTopologyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[65]
+	mi := &file_gqldb_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4147,7 +3943,7 @@ func (x *WaitForComputeTopologyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WaitForComputeTopologyResponse.ProtoReflect.Descriptor instead.
 func (*WaitForComputeTopologyResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{65}
+	return file_gqldb_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *WaitForComputeTopologyResponse) GetReady() bool {
@@ -4178,7 +3974,7 @@ type StartBulkImportRequest struct {
 
 func (x *StartBulkImportRequest) Reset() {
 	*x = StartBulkImportRequest{}
-	mi := &file_gqldb_proto_msgTypes[66]
+	mi := &file_gqldb_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4190,7 +3986,7 @@ func (x *StartBulkImportRequest) String() string {
 func (*StartBulkImportRequest) ProtoMessage() {}
 
 func (x *StartBulkImportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[66]
+	mi := &file_gqldb_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4203,7 +3999,7 @@ func (x *StartBulkImportRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartBulkImportRequest.ProtoReflect.Descriptor instead.
 func (*StartBulkImportRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{66}
+	return file_gqldb_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *StartBulkImportRequest) GetGraphName() string {
@@ -4259,7 +4055,7 @@ type StartBulkImportResponse struct {
 
 func (x *StartBulkImportResponse) Reset() {
 	*x = StartBulkImportResponse{}
-	mi := &file_gqldb_proto_msgTypes[67]
+	mi := &file_gqldb_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4271,7 +4067,7 @@ func (x *StartBulkImportResponse) String() string {
 func (*StartBulkImportResponse) ProtoMessage() {}
 
 func (x *StartBulkImportResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[67]
+	mi := &file_gqldb_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4284,7 +4080,7 @@ func (x *StartBulkImportResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartBulkImportResponse.ProtoReflect.Descriptor instead.
 func (*StartBulkImportResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{67}
+	return file_gqldb_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *StartBulkImportResponse) GetSuccess() bool {
@@ -4317,7 +4113,7 @@ type CheckpointRequest struct {
 
 func (x *CheckpointRequest) Reset() {
 	*x = CheckpointRequest{}
-	mi := &file_gqldb_proto_msgTypes[68]
+	mi := &file_gqldb_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4329,7 +4125,7 @@ func (x *CheckpointRequest) String() string {
 func (*CheckpointRequest) ProtoMessage() {}
 
 func (x *CheckpointRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[68]
+	mi := &file_gqldb_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4342,7 +4138,7 @@ func (x *CheckpointRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckpointRequest.ProtoReflect.Descriptor instead.
 func (*CheckpointRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{68}
+	return file_gqldb_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *CheckpointRequest) GetSessionId() string {
@@ -4364,7 +4160,7 @@ type CheckpointResponse struct {
 
 func (x *CheckpointResponse) Reset() {
 	*x = CheckpointResponse{}
-	mi := &file_gqldb_proto_msgTypes[69]
+	mi := &file_gqldb_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4376,7 +4172,7 @@ func (x *CheckpointResponse) String() string {
 func (*CheckpointResponse) ProtoMessage() {}
 
 func (x *CheckpointResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[69]
+	mi := &file_gqldb_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4389,7 +4185,7 @@ func (x *CheckpointResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckpointResponse.ProtoReflect.Descriptor instead.
 func (*CheckpointResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{69}
+	return file_gqldb_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *CheckpointResponse) GetSuccess() bool {
@@ -4429,7 +4225,7 @@ type EndBulkImportRequest struct {
 
 func (x *EndBulkImportRequest) Reset() {
 	*x = EndBulkImportRequest{}
-	mi := &file_gqldb_proto_msgTypes[70]
+	mi := &file_gqldb_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4441,7 +4237,7 @@ func (x *EndBulkImportRequest) String() string {
 func (*EndBulkImportRequest) ProtoMessage() {}
 
 func (x *EndBulkImportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[70]
+	mi := &file_gqldb_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4454,7 +4250,7 @@ func (x *EndBulkImportRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EndBulkImportRequest.ProtoReflect.Descriptor instead.
 func (*EndBulkImportRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{70}
+	return file_gqldb_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *EndBulkImportRequest) GetSessionId() string {
@@ -4475,7 +4271,7 @@ type EndBulkImportResponse struct {
 
 func (x *EndBulkImportResponse) Reset() {
 	*x = EndBulkImportResponse{}
-	mi := &file_gqldb_proto_msgTypes[71]
+	mi := &file_gqldb_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4487,7 +4283,7 @@ func (x *EndBulkImportResponse) String() string {
 func (*EndBulkImportResponse) ProtoMessage() {}
 
 func (x *EndBulkImportResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[71]
+	mi := &file_gqldb_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4500,7 +4296,7 @@ func (x *EndBulkImportResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EndBulkImportResponse.ProtoReflect.Descriptor instead.
 func (*EndBulkImportResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{71}
+	return file_gqldb_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *EndBulkImportResponse) GetSuccess() bool {
@@ -4533,7 +4329,7 @@ type AbortBulkImportRequest struct {
 
 func (x *AbortBulkImportRequest) Reset() {
 	*x = AbortBulkImportRequest{}
-	mi := &file_gqldb_proto_msgTypes[72]
+	mi := &file_gqldb_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4545,7 +4341,7 @@ func (x *AbortBulkImportRequest) String() string {
 func (*AbortBulkImportRequest) ProtoMessage() {}
 
 func (x *AbortBulkImportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[72]
+	mi := &file_gqldb_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4558,7 +4354,7 @@ func (x *AbortBulkImportRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AbortBulkImportRequest.ProtoReflect.Descriptor instead.
 func (*AbortBulkImportRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{72}
+	return file_gqldb_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *AbortBulkImportRequest) GetSessionId() string {
@@ -4578,7 +4374,7 @@ type AbortBulkImportResponse struct {
 
 func (x *AbortBulkImportResponse) Reset() {
 	*x = AbortBulkImportResponse{}
-	mi := &file_gqldb_proto_msgTypes[73]
+	mi := &file_gqldb_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4590,7 +4386,7 @@ func (x *AbortBulkImportResponse) String() string {
 func (*AbortBulkImportResponse) ProtoMessage() {}
 
 func (x *AbortBulkImportResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[73]
+	mi := &file_gqldb_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4603,7 +4399,7 @@ func (x *AbortBulkImportResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AbortBulkImportResponse.ProtoReflect.Descriptor instead.
 func (*AbortBulkImportResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{73}
+	return file_gqldb_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *AbortBulkImportResponse) GetSuccess() bool {
@@ -4629,7 +4425,7 @@ type GetBulkImportStatusRequest struct {
 
 func (x *GetBulkImportStatusRequest) Reset() {
 	*x = GetBulkImportStatusRequest{}
-	mi := &file_gqldb_proto_msgTypes[74]
+	mi := &file_gqldb_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4641,7 +4437,7 @@ func (x *GetBulkImportStatusRequest) String() string {
 func (*GetBulkImportStatusRequest) ProtoMessage() {}
 
 func (x *GetBulkImportStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[74]
+	mi := &file_gqldb_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4654,7 +4450,7 @@ func (x *GetBulkImportStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBulkImportStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetBulkImportStatusRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{74}
+	return file_gqldb_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *GetBulkImportStatusRequest) GetSessionId() string {
@@ -4678,7 +4474,7 @@ type GetBulkImportStatusResponse struct {
 
 func (x *GetBulkImportStatusResponse) Reset() {
 	*x = GetBulkImportStatusResponse{}
-	mi := &file_gqldb_proto_msgTypes[75]
+	mi := &file_gqldb_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4690,7 +4486,7 @@ func (x *GetBulkImportStatusResponse) String() string {
 func (*GetBulkImportStatusResponse) ProtoMessage() {}
 
 func (x *GetBulkImportStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[75]
+	mi := &file_gqldb_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4703,7 +4499,7 @@ func (x *GetBulkImportStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBulkImportStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetBulkImportStatusResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{75}
+	return file_gqldb_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *GetBulkImportStatusResponse) GetIsActive() bool {
@@ -4756,7 +4552,7 @@ type GetSystemMetricsRequest struct {
 
 func (x *GetSystemMetricsRequest) Reset() {
 	*x = GetSystemMetricsRequest{}
-	mi := &file_gqldb_proto_msgTypes[76]
+	mi := &file_gqldb_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4768,7 +4564,7 @@ func (x *GetSystemMetricsRequest) String() string {
 func (*GetSystemMetricsRequest) ProtoMessage() {}
 
 func (x *GetSystemMetricsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[76]
+	mi := &file_gqldb_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4781,7 +4577,7 @@ func (x *GetSystemMetricsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSystemMetricsRequest.ProtoReflect.Descriptor instead.
 func (*GetSystemMetricsRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{76}
+	return file_gqldb_proto_rawDescGZIP(), []int{72}
 }
 
 type GetSystemMetricsResponse struct {
@@ -4797,7 +4593,7 @@ type GetSystemMetricsResponse struct {
 
 func (x *GetSystemMetricsResponse) Reset() {
 	*x = GetSystemMetricsResponse{}
-	mi := &file_gqldb_proto_msgTypes[77]
+	mi := &file_gqldb_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4809,7 +4605,7 @@ func (x *GetSystemMetricsResponse) String() string {
 func (*GetSystemMetricsResponse) ProtoMessage() {}
 
 func (x *GetSystemMetricsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[77]
+	mi := &file_gqldb_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4822,7 +4618,7 @@ func (x *GetSystemMetricsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSystemMetricsResponse.ProtoReflect.Descriptor instead.
 func (*GetSystemMetricsResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{77}
+	return file_gqldb_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *GetSystemMetricsResponse) GetCpu() *CpuMetrics {
@@ -4871,7 +4667,7 @@ type CpuMetrics struct {
 
 func (x *CpuMetrics) Reset() {
 	*x = CpuMetrics{}
-	mi := &file_gqldb_proto_msgTypes[78]
+	mi := &file_gqldb_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4883,7 +4679,7 @@ func (x *CpuMetrics) String() string {
 func (*CpuMetrics) ProtoMessage() {}
 
 func (x *CpuMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[78]
+	mi := &file_gqldb_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4896,7 +4692,7 @@ func (x *CpuMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CpuMetrics.ProtoReflect.Descriptor instead.
 func (*CpuMetrics) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{78}
+	return file_gqldb_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *CpuMetrics) GetProcessPercent() float64 {
@@ -4940,7 +4736,7 @@ type MemoryMetrics struct {
 
 func (x *MemoryMetrics) Reset() {
 	*x = MemoryMetrics{}
-	mi := &file_gqldb_proto_msgTypes[79]
+	mi := &file_gqldb_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4952,7 +4748,7 @@ func (x *MemoryMetrics) String() string {
 func (*MemoryMetrics) ProtoMessage() {}
 
 func (x *MemoryMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[79]
+	mi := &file_gqldb_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4965,7 +4761,7 @@ func (x *MemoryMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemoryMetrics.ProtoReflect.Descriptor instead.
 func (*MemoryMetrics) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{79}
+	return file_gqldb_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *MemoryMetrics) GetProcessRss() uint64 {
@@ -5050,7 +4846,7 @@ type DiskIOMetrics struct {
 
 func (x *DiskIOMetrics) Reset() {
 	*x = DiskIOMetrics{}
-	mi := &file_gqldb_proto_msgTypes[80]
+	mi := &file_gqldb_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5062,7 +4858,7 @@ func (x *DiskIOMetrics) String() string {
 func (*DiskIOMetrics) ProtoMessage() {}
 
 func (x *DiskIOMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[80]
+	mi := &file_gqldb_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5075,7 +4871,7 @@ func (x *DiskIOMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiskIOMetrics.ProtoReflect.Descriptor instead.
 func (*DiskIOMetrics) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{80}
+	return file_gqldb_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *DiskIOMetrics) GetReadBytes() uint64 {
@@ -5119,7 +4915,7 @@ type StorageMetrics struct {
 
 func (x *StorageMetrics) Reset() {
 	*x = StorageMetrics{}
-	mi := &file_gqldb_proto_msgTypes[81]
+	mi := &file_gqldb_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5131,7 +4927,7 @@ func (x *StorageMetrics) String() string {
 func (*StorageMetrics) ProtoMessage() {}
 
 func (x *StorageMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[81]
+	mi := &file_gqldb_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5144,7 +4940,7 @@ func (x *StorageMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StorageMetrics.ProtoReflect.Descriptor instead.
 func (*StorageMetrics) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{81}
+	return file_gqldb_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *StorageMetrics) GetDbPath() string {
@@ -5194,7 +4990,7 @@ type NetworkMetrics struct {
 
 func (x *NetworkMetrics) Reset() {
 	*x = NetworkMetrics{}
-	mi := &file_gqldb_proto_msgTypes[82]
+	mi := &file_gqldb_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5206,7 +5002,7 @@ func (x *NetworkMetrics) String() string {
 func (*NetworkMetrics) ProtoMessage() {}
 
 func (x *NetworkMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[82]
+	mi := &file_gqldb_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5219,7 +5015,7 @@ func (x *NetworkMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkMetrics.ProtoReflect.Descriptor instead.
 func (*NetworkMetrics) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{82}
+	return file_gqldb_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *NetworkMetrics) GetBytesSent() uint64 {
@@ -5302,7 +5098,7 @@ const file_gqldb_proto_rawDesc = "" +
 	"\x0etransaction_id\x18\x05 \x01(\x04R\rtransactionId\x12\x18\n" +
 	"\atimeout\x18\x06 \x01(\x05R\atimeout\x12\x1b\n" +
 	"\tread_only\x18\a \x01(\bR\breadOnly\x12(\n" +
-	"\x10max_path_results\x18\b \x01(\x03R\x0emaxPathResults\"\xe5\x01\n" +
+	"\x10max_path_results\x18\b \x01(\x03R\x0emaxPathResults\"\xd1\x02\n" +
 	"\vGqlResponse\x12\x18\n" +
 	"\acolumns\x18\x01 \x03(\tR\acolumns\x12\x1e\n" +
 	"\x04rows\x18\x02 \x03(\v2\n" +
@@ -5311,7 +5107,13 @@ const file_gqldb_proto_rawDesc = "" +
 	"\bhas_more\x18\x04 \x01(\bR\ahasMore\x12\x1a\n" +
 	"\bwarnings\x18\x05 \x03(\tR\bwarnings\x12#\n" +
 	"\rrows_affected\x18\x06 \x01(\x03R\frowsAffected\x12#\n" +
-	"\rcurrent_graph\x18\a \x01(\tR\fcurrentGraph\"%\n" +
+	"\rcurrent_graph\x18\a \x01(\tR\fcurrentGraph\x12 \n" +
+	"\ftime_cost_ns\x18\b \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\t \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\n" +
+	" \x01(\x03R\rcomputeCostNs\"%\n" +
 	"\x0fExplainResponse\x12\x12\n" +
 	"\x04plan\x18\x01 \x01(\tR\x04plan\"+\n" +
 	"\x0fProfileResponse\x12\x18\n" +
@@ -5367,27 +5169,7 @@ const file_gqldb_proto_rawDesc = "" +
 	"\n" +
 	"edge_count\x18\x03 \x01(\x03R\tedgeCount\x12\x18\n" +
 	"\amessage\x18\x04 \x01(\tR\amessage\x12#\n" +
-	"\rskipped_count\x18\x05 \x01(\x03R\fskippedCount\"|\n" +
-	"\x12DeleteNodesRequest\x12\x1d\n" +
-	"\n" +
-	"graph_name\x18\x01 \x01(\tR\tgraphName\x12\x19\n" +
-	"\bnode_ids\x18\x02 \x03(\tR\anodeIds\x12\x16\n" +
-	"\x06labels\x18\x03 \x03(\tR\x06labels\x12\x14\n" +
-	"\x05where\x18\x04 \x01(\tR\x05where\"n\n" +
-	"\x13DeleteNodesResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\x12#\n" +
-	"\rdeleted_count\x18\x02 \x01(\x03R\fdeletedCount\x12\x18\n" +
-	"\amessage\x18\x03 \x01(\tR\amessage\"z\n" +
-	"\x12DeleteEdgesRequest\x12\x1d\n" +
-	"\n" +
-	"graph_name\x18\x01 \x01(\tR\tgraphName\x12\x19\n" +
-	"\bedge_ids\x18\x02 \x03(\tR\aedgeIds\x12\x14\n" +
-	"\x05label\x18\x03 \x01(\tR\x05label\x12\x14\n" +
-	"\x05where\x18\x04 \x01(\tR\x05where\"n\n" +
-	"\x13DeleteEdgesResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\x12#\n" +
-	"\rdeleted_count\x18\x02 \x01(\x03R\fdeletedCount\x12\x18\n" +
-	"\amessage\x18\x03 \x01(\tR\amessage\"\x80\x02\n" +
+	"\rskipped_count\x18\x05 \x01(\x03R\fskippedCount\"\x80\x02\n" +
 	"\rExportRequest\x12\x1d\n" +
 	"\n" +
 	"graph_name\x18\x01 \x01(\tR\tgraphName\x12\x1d\n" +
@@ -5716,12 +5498,10 @@ const file_gqldb_proto_rawDesc = "" +
 	"\x03Gql\x12\x11.gqldb.GqlRequest\x1a\x12.gqldb.GqlResponse\x124\n" +
 	"\tGqlStream\x12\x11.gqldb.GqlRequest\x1a\x12.gqldb.GqlResponse0\x01\x124\n" +
 	"\aExplain\x12\x11.gqldb.GqlRequest\x1a\x16.gqldb.ExplainResponse\x124\n" +
-	"\aProfile\x12\x11.gqldb.GqlRequest\x1a\x16.gqldb.ProfileResponse2\xde\x02\n" +
+	"\aProfile\x12\x11.gqldb.GqlRequest\x1a\x16.gqldb.ProfileResponse2\xd2\x01\n" +
 	"\vDataService\x12D\n" +
 	"\vInsertNodes\x12\x19.gqldb.InsertNodesRequest\x1a\x1a.gqldb.InsertNodesResponse\x12D\n" +
-	"\vInsertEdges\x12\x19.gqldb.InsertEdgesRequest\x1a\x1a.gqldb.InsertEdgesResponse\x12D\n" +
-	"\vDeleteNodes\x12\x19.gqldb.DeleteNodesRequest\x1a\x1a.gqldb.DeleteNodesResponse\x12D\n" +
-	"\vDeleteEdges\x12\x19.gqldb.DeleteEdgesRequest\x1a\x1a.gqldb.DeleteEdgesResponse\x127\n" +
+	"\vInsertEdges\x12\x19.gqldb.InsertEdgesRequest\x1a\x1a.gqldb.InsertEdgesResponse\x127\n" +
 	"\x06Export\x12\x14.gqldb.ExportRequest\x1a\x15.gqldb.ExportResponse0\x012\xdd\x02\n" +
 	"\fGraphService\x12D\n" +
 	"\vCreateGraph\x12\x19.gqldb.CreateGraphRequest\x1a\x1a.gqldb.CreateGraphResponse\x12>\n" +
@@ -5769,7 +5549,7 @@ func file_gqldb_proto_rawDescGZIP() []byte {
 }
 
 var file_gqldb_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_gqldb_proto_msgTypes = make([]protoimpl.MessageInfo, 87)
+var file_gqldb_proto_msgTypes = make([]protoimpl.MessageInfo, 83)
 var file_gqldb_proto_goTypes = []any{
 	(PropertyType)(0),                         // 0: gqldb.PropertyType
 	(GraphType)(0),                            // 1: gqldb.GraphType
@@ -5797,72 +5577,68 @@ var file_gqldb_proto_goTypes = []any{
 	(*InsertNodesResponse)(nil),               // 23: gqldb.InsertNodesResponse
 	(*InsertEdgesRequest)(nil),                // 24: gqldb.InsertEdgesRequest
 	(*InsertEdgesResponse)(nil),               // 25: gqldb.InsertEdgesResponse
-	(*DeleteNodesRequest)(nil),                // 26: gqldb.DeleteNodesRequest
-	(*DeleteNodesResponse)(nil),               // 27: gqldb.DeleteNodesResponse
-	(*DeleteEdgesRequest)(nil),                // 28: gqldb.DeleteEdgesRequest
-	(*DeleteEdgesResponse)(nil),               // 29: gqldb.DeleteEdgesResponse
-	(*ExportRequest)(nil),                     // 30: gqldb.ExportRequest
-	(*ExportResponse)(nil),                    // 31: gqldb.ExportResponse
-	(*ExportStats)(nil),                       // 32: gqldb.ExportStats
-	(*CreateGraphRequest)(nil),                // 33: gqldb.CreateGraphRequest
-	(*CreateGraphResponse)(nil),               // 34: gqldb.CreateGraphResponse
-	(*DropGraphRequest)(nil),                  // 35: gqldb.DropGraphRequest
-	(*DropGraphResponse)(nil),                 // 36: gqldb.DropGraphResponse
-	(*UseGraphRequest)(nil),                   // 37: gqldb.UseGraphRequest
-	(*UseGraphResponse)(nil),                  // 38: gqldb.UseGraphResponse
-	(*ListGraphsRequest)(nil),                 // 39: gqldb.ListGraphsRequest
-	(*ListGraphsResponse)(nil),                // 40: gqldb.ListGraphsResponse
-	(*GetGraphInfoRequest)(nil),               // 41: gqldb.GetGraphInfoRequest
-	(*GetGraphInfoResponse)(nil),              // 42: gqldb.GetGraphInfoResponse
-	(*GraphInfo)(nil),                         // 43: gqldb.GraphInfo
-	(*BeginRequest)(nil),                      // 44: gqldb.BeginRequest
-	(*BeginResponse)(nil),                     // 45: gqldb.BeginResponse
-	(*CommitRequest)(nil),                     // 46: gqldb.CommitRequest
-	(*CommitResponse)(nil),                    // 47: gqldb.CommitResponse
-	(*RollbackRequest)(nil),                   // 48: gqldb.RollbackRequest
-	(*RollbackResponse)(nil),                  // 49: gqldb.RollbackResponse
-	(*ListTransactionsRequest)(nil),           // 50: gqldb.ListTransactionsRequest
-	(*ListTransactionsResponse)(nil),          // 51: gqldb.ListTransactionsResponse
-	(*TransactionInfo)(nil),                   // 52: gqldb.TransactionInfo
-	(*HealthCheckRequest)(nil),                // 53: gqldb.HealthCheckRequest
-	(*HealthCheckResponse)(nil),               // 54: gqldb.HealthCheckResponse
-	(*WarmupParserRequest)(nil),               // 55: gqldb.WarmupParserRequest
-	(*WarmupParserResponse)(nil),              // 56: gqldb.WarmupParserResponse
-	(*GetCacheStatsRequest)(nil),              // 57: gqldb.GetCacheStatsRequest
-	(*CacheStatsResponse)(nil),                // 58: gqldb.CacheStatsResponse
-	(*ASTCacheStats)(nil),                     // 59: gqldb.ASTCacheStats
-	(*PlanCacheStats)(nil),                    // 60: gqldb.PlanCacheStats
-	(*ClearCacheRequest)(nil),                 // 61: gqldb.ClearCacheRequest
-	(*ClearCacheResponse)(nil),                // 62: gqldb.ClearCacheResponse
-	(*GetStatisticsRequest)(nil),              // 63: gqldb.GetStatisticsRequest
-	(*GetStatisticsResponse)(nil),             // 64: gqldb.GetStatisticsResponse
-	(*InvalidatePermissionCacheRequest)(nil),  // 65: gqldb.InvalidatePermissionCacheRequest
-	(*InvalidatePermissionCacheResponse)(nil), // 66: gqldb.InvalidatePermissionCacheResponse
-	(*CompactRequest)(nil),                    // 67: gqldb.CompactRequest
-	(*CompactResponse)(nil),                   // 68: gqldb.CompactResponse
-	(*WaitForComputeTopologyRequest)(nil),     // 69: gqldb.WaitForComputeTopologyRequest
-	(*WaitForComputeTopologyResponse)(nil),    // 70: gqldb.WaitForComputeTopologyResponse
-	(*StartBulkImportRequest)(nil),            // 71: gqldb.StartBulkImportRequest
-	(*StartBulkImportResponse)(nil),           // 72: gqldb.StartBulkImportResponse
-	(*CheckpointRequest)(nil),                 // 73: gqldb.CheckpointRequest
-	(*CheckpointResponse)(nil),                // 74: gqldb.CheckpointResponse
-	(*EndBulkImportRequest)(nil),              // 75: gqldb.EndBulkImportRequest
-	(*EndBulkImportResponse)(nil),             // 76: gqldb.EndBulkImportResponse
-	(*AbortBulkImportRequest)(nil),            // 77: gqldb.AbortBulkImportRequest
-	(*AbortBulkImportResponse)(nil),           // 78: gqldb.AbortBulkImportResponse
-	(*GetBulkImportStatusRequest)(nil),        // 79: gqldb.GetBulkImportStatusRequest
-	(*GetBulkImportStatusResponse)(nil),       // 80: gqldb.GetBulkImportStatusResponse
-	(*GetSystemMetricsRequest)(nil),           // 81: gqldb.GetSystemMetricsRequest
-	(*GetSystemMetricsResponse)(nil),          // 82: gqldb.GetSystemMetricsResponse
-	(*CpuMetrics)(nil),                        // 83: gqldb.CpuMetrics
-	(*MemoryMetrics)(nil),                     // 84: gqldb.MemoryMetrics
-	(*DiskIOMetrics)(nil),                     // 85: gqldb.DiskIOMetrics
-	(*StorageMetrics)(nil),                    // 86: gqldb.StorageMetrics
-	(*NetworkMetrics)(nil),                    // 87: gqldb.NetworkMetrics
-	nil,                                       // 88: gqldb.NodeData.PropertiesEntry
-	nil,                                       // 89: gqldb.EdgeData.PropertiesEntry
-	nil,                                       // 90: gqldb.GetStatisticsResponse.LabelCountsEntry
-	nil,                                       // 91: gqldb.GetStatisticsResponse.EdgeLabelCountsEntry
+	(*ExportRequest)(nil),                     // 26: gqldb.ExportRequest
+	(*ExportResponse)(nil),                    // 27: gqldb.ExportResponse
+	(*ExportStats)(nil),                       // 28: gqldb.ExportStats
+	(*CreateGraphRequest)(nil),                // 29: gqldb.CreateGraphRequest
+	(*CreateGraphResponse)(nil),               // 30: gqldb.CreateGraphResponse
+	(*DropGraphRequest)(nil),                  // 31: gqldb.DropGraphRequest
+	(*DropGraphResponse)(nil),                 // 32: gqldb.DropGraphResponse
+	(*UseGraphRequest)(nil),                   // 33: gqldb.UseGraphRequest
+	(*UseGraphResponse)(nil),                  // 34: gqldb.UseGraphResponse
+	(*ListGraphsRequest)(nil),                 // 35: gqldb.ListGraphsRequest
+	(*ListGraphsResponse)(nil),                // 36: gqldb.ListGraphsResponse
+	(*GetGraphInfoRequest)(nil),               // 37: gqldb.GetGraphInfoRequest
+	(*GetGraphInfoResponse)(nil),              // 38: gqldb.GetGraphInfoResponse
+	(*GraphInfo)(nil),                         // 39: gqldb.GraphInfo
+	(*BeginRequest)(nil),                      // 40: gqldb.BeginRequest
+	(*BeginResponse)(nil),                     // 41: gqldb.BeginResponse
+	(*CommitRequest)(nil),                     // 42: gqldb.CommitRequest
+	(*CommitResponse)(nil),                    // 43: gqldb.CommitResponse
+	(*RollbackRequest)(nil),                   // 44: gqldb.RollbackRequest
+	(*RollbackResponse)(nil),                  // 45: gqldb.RollbackResponse
+	(*ListTransactionsRequest)(nil),           // 46: gqldb.ListTransactionsRequest
+	(*ListTransactionsResponse)(nil),          // 47: gqldb.ListTransactionsResponse
+	(*TransactionInfo)(nil),                   // 48: gqldb.TransactionInfo
+	(*HealthCheckRequest)(nil),                // 49: gqldb.HealthCheckRequest
+	(*HealthCheckResponse)(nil),               // 50: gqldb.HealthCheckResponse
+	(*WarmupParserRequest)(nil),               // 51: gqldb.WarmupParserRequest
+	(*WarmupParserResponse)(nil),              // 52: gqldb.WarmupParserResponse
+	(*GetCacheStatsRequest)(nil),              // 53: gqldb.GetCacheStatsRequest
+	(*CacheStatsResponse)(nil),                // 54: gqldb.CacheStatsResponse
+	(*ASTCacheStats)(nil),                     // 55: gqldb.ASTCacheStats
+	(*PlanCacheStats)(nil),                    // 56: gqldb.PlanCacheStats
+	(*ClearCacheRequest)(nil),                 // 57: gqldb.ClearCacheRequest
+	(*ClearCacheResponse)(nil),                // 58: gqldb.ClearCacheResponse
+	(*GetStatisticsRequest)(nil),              // 59: gqldb.GetStatisticsRequest
+	(*GetStatisticsResponse)(nil),             // 60: gqldb.GetStatisticsResponse
+	(*InvalidatePermissionCacheRequest)(nil),  // 61: gqldb.InvalidatePermissionCacheRequest
+	(*InvalidatePermissionCacheResponse)(nil), // 62: gqldb.InvalidatePermissionCacheResponse
+	(*CompactRequest)(nil),                    // 63: gqldb.CompactRequest
+	(*CompactResponse)(nil),                   // 64: gqldb.CompactResponse
+	(*WaitForComputeTopologyRequest)(nil),     // 65: gqldb.WaitForComputeTopologyRequest
+	(*WaitForComputeTopologyResponse)(nil),    // 66: gqldb.WaitForComputeTopologyResponse
+	(*StartBulkImportRequest)(nil),            // 67: gqldb.StartBulkImportRequest
+	(*StartBulkImportResponse)(nil),           // 68: gqldb.StartBulkImportResponse
+	(*CheckpointRequest)(nil),                 // 69: gqldb.CheckpointRequest
+	(*CheckpointResponse)(nil),                // 70: gqldb.CheckpointResponse
+	(*EndBulkImportRequest)(nil),              // 71: gqldb.EndBulkImportRequest
+	(*EndBulkImportResponse)(nil),             // 72: gqldb.EndBulkImportResponse
+	(*AbortBulkImportRequest)(nil),            // 73: gqldb.AbortBulkImportRequest
+	(*AbortBulkImportResponse)(nil),           // 74: gqldb.AbortBulkImportResponse
+	(*GetBulkImportStatusRequest)(nil),        // 75: gqldb.GetBulkImportStatusRequest
+	(*GetBulkImportStatusResponse)(nil),       // 76: gqldb.GetBulkImportStatusResponse
+	(*GetSystemMetricsRequest)(nil),           // 77: gqldb.GetSystemMetricsRequest
+	(*GetSystemMetricsResponse)(nil),          // 78: gqldb.GetSystemMetricsResponse
+	(*CpuMetrics)(nil),                        // 79: gqldb.CpuMetrics
+	(*MemoryMetrics)(nil),                     // 80: gqldb.MemoryMetrics
+	(*DiskIOMetrics)(nil),                     // 81: gqldb.DiskIOMetrics
+	(*StorageMetrics)(nil),                    // 82: gqldb.StorageMetrics
+	(*NetworkMetrics)(nil),                    // 83: gqldb.NetworkMetrics
+	nil,                                       // 84: gqldb.NodeData.PropertiesEntry
+	nil,                                       // 85: gqldb.EdgeData.PropertiesEntry
+	nil,                                       // 86: gqldb.GetStatisticsResponse.LabelCountsEntry
+	nil,                                       // 87: gqldb.GetStatisticsResponse.EdgeLabelCountsEntry
 }
 var file_gqldb_proto_depIdxs = []int32{
 	0,  // 0: gqldb.TypedValue.type:type_name -> gqldb.PropertyType
@@ -5870,32 +5646,32 @@ var file_gqldb_proto_depIdxs = []int32{
 	5,  // 2: gqldb.Row.values:type_name -> gqldb.TypedValue
 	6,  // 3: gqldb.GqlRequest.parameters:type_name -> gqldb.Parameter
 	7,  // 4: gqldb.GqlResponse.rows:type_name -> gqldb.Row
-	88, // 5: gqldb.NodeData.properties:type_name -> gqldb.NodeData.PropertiesEntry
-	89, // 6: gqldb.EdgeData.properties:type_name -> gqldb.EdgeData.PropertiesEntry
+	84, // 5: gqldb.NodeData.properties:type_name -> gqldb.NodeData.PropertiesEntry
+	85, // 6: gqldb.EdgeData.properties:type_name -> gqldb.EdgeData.PropertiesEntry
 	3,  // 7: gqldb.BulkCreateNodesOptions.mode:type_name -> gqldb.InsertMode
 	3,  // 8: gqldb.BulkCreateEdgesOptions.mode:type_name -> gqldb.InsertMode
 	18, // 9: gqldb.InsertNodesRequest.nodes:type_name -> gqldb.NodeData
 	20, // 10: gqldb.InsertNodesRequest.options:type_name -> gqldb.BulkCreateNodesOptions
 	19, // 11: gqldb.InsertEdgesRequest.edges:type_name -> gqldb.EdgeData
 	21, // 12: gqldb.InsertEdgesRequest.options:type_name -> gqldb.BulkCreateEdgesOptions
-	32, // 13: gqldb.ExportResponse.stats:type_name -> gqldb.ExportStats
+	28, // 13: gqldb.ExportResponse.stats:type_name -> gqldb.ExportStats
 	1,  // 14: gqldb.CreateGraphRequest.graph_type:type_name -> gqldb.GraphType
-	43, // 15: gqldb.ListGraphsResponse.graphs:type_name -> gqldb.GraphInfo
-	43, // 16: gqldb.GetGraphInfoResponse.info:type_name -> gqldb.GraphInfo
+	39, // 15: gqldb.ListGraphsResponse.graphs:type_name -> gqldb.GraphInfo
+	39, // 16: gqldb.GetGraphInfoResponse.info:type_name -> gqldb.GraphInfo
 	1,  // 17: gqldb.GraphInfo.graph_type:type_name -> gqldb.GraphType
-	52, // 18: gqldb.ListTransactionsResponse.transactions:type_name -> gqldb.TransactionInfo
+	48, // 18: gqldb.ListTransactionsResponse.transactions:type_name -> gqldb.TransactionInfo
 	2,  // 19: gqldb.HealthCheckResponse.status:type_name -> gqldb.HealthStatus
 	4,  // 20: gqldb.GetCacheStatsRequest.cache_type:type_name -> gqldb.CacheType
-	59, // 21: gqldb.CacheStatsResponse.ast_stats:type_name -> gqldb.ASTCacheStats
-	60, // 22: gqldb.CacheStatsResponse.plan_stats:type_name -> gqldb.PlanCacheStats
+	55, // 21: gqldb.CacheStatsResponse.ast_stats:type_name -> gqldb.ASTCacheStats
+	56, // 22: gqldb.CacheStatsResponse.plan_stats:type_name -> gqldb.PlanCacheStats
 	4,  // 23: gqldb.ClearCacheRequest.cache_type:type_name -> gqldb.CacheType
-	90, // 24: gqldb.GetStatisticsResponse.label_counts:type_name -> gqldb.GetStatisticsResponse.LabelCountsEntry
-	91, // 25: gqldb.GetStatisticsResponse.edge_label_counts:type_name -> gqldb.GetStatisticsResponse.EdgeLabelCountsEntry
-	83, // 26: gqldb.GetSystemMetricsResponse.cpu:type_name -> gqldb.CpuMetrics
-	84, // 27: gqldb.GetSystemMetricsResponse.memory:type_name -> gqldb.MemoryMetrics
-	85, // 28: gqldb.GetSystemMetricsResponse.disk_io:type_name -> gqldb.DiskIOMetrics
-	86, // 29: gqldb.GetSystemMetricsResponse.storage:type_name -> gqldb.StorageMetrics
-	87, // 30: gqldb.GetSystemMetricsResponse.network:type_name -> gqldb.NetworkMetrics
+	86, // 24: gqldb.GetStatisticsResponse.label_counts:type_name -> gqldb.GetStatisticsResponse.LabelCountsEntry
+	87, // 25: gqldb.GetStatisticsResponse.edge_label_counts:type_name -> gqldb.GetStatisticsResponse.EdgeLabelCountsEntry
+	79, // 26: gqldb.GetSystemMetricsResponse.cpu:type_name -> gqldb.CpuMetrics
+	80, // 27: gqldb.GetSystemMetricsResponse.memory:type_name -> gqldb.MemoryMetrics
+	81, // 28: gqldb.GetSystemMetricsResponse.disk_io:type_name -> gqldb.DiskIOMetrics
+	82, // 29: gqldb.GetSystemMetricsResponse.storage:type_name -> gqldb.StorageMetrics
+	83, // 30: gqldb.GetSystemMetricsResponse.network:type_name -> gqldb.NetworkMetrics
 	5,  // 31: gqldb.NodeData.PropertiesEntry.value:type_name -> gqldb.TypedValue
 	5,  // 32: gqldb.EdgeData.PropertiesEntry.value:type_name -> gqldb.TypedValue
 	8,  // 33: gqldb.SessionService.Login:input_type -> gqldb.LoginRequest
@@ -5907,71 +5683,67 @@ var file_gqldb_proto_depIdxs = []int32{
 	14, // 39: gqldb.QueryService.Profile:input_type -> gqldb.GqlRequest
 	22, // 40: gqldb.DataService.InsertNodes:input_type -> gqldb.InsertNodesRequest
 	24, // 41: gqldb.DataService.InsertEdges:input_type -> gqldb.InsertEdgesRequest
-	26, // 42: gqldb.DataService.DeleteNodes:input_type -> gqldb.DeleteNodesRequest
-	28, // 43: gqldb.DataService.DeleteEdges:input_type -> gqldb.DeleteEdgesRequest
-	30, // 44: gqldb.DataService.Export:input_type -> gqldb.ExportRequest
-	33, // 45: gqldb.GraphService.CreateGraph:input_type -> gqldb.CreateGraphRequest
-	35, // 46: gqldb.GraphService.DropGraph:input_type -> gqldb.DropGraphRequest
-	37, // 47: gqldb.GraphService.UseGraph:input_type -> gqldb.UseGraphRequest
-	39, // 48: gqldb.GraphService.ListGraphs:input_type -> gqldb.ListGraphsRequest
-	41, // 49: gqldb.GraphService.GetGraphInfo:input_type -> gqldb.GetGraphInfoRequest
-	44, // 50: gqldb.TransactionService.Begin:input_type -> gqldb.BeginRequest
-	46, // 51: gqldb.TransactionService.Commit:input_type -> gqldb.CommitRequest
-	48, // 52: gqldb.TransactionService.Rollback:input_type -> gqldb.RollbackRequest
-	50, // 53: gqldb.TransactionService.ListTransactions:input_type -> gqldb.ListTransactionsRequest
-	53, // 54: gqldb.Health.Check:input_type -> gqldb.HealthCheckRequest
-	53, // 55: gqldb.Health.Watch:input_type -> gqldb.HealthCheckRequest
-	55, // 56: gqldb.AdminService.WarmupParser:input_type -> gqldb.WarmupParserRequest
-	57, // 57: gqldb.AdminService.GetCacheStats:input_type -> gqldb.GetCacheStatsRequest
-	61, // 58: gqldb.AdminService.ClearCache:input_type -> gqldb.ClearCacheRequest
-	63, // 59: gqldb.AdminService.GetStatistics:input_type -> gqldb.GetStatisticsRequest
-	65, // 60: gqldb.AdminService.InvalidatePermissionCache:input_type -> gqldb.InvalidatePermissionCacheRequest
-	67, // 61: gqldb.AdminService.Compact:input_type -> gqldb.CompactRequest
-	69, // 62: gqldb.AdminService.WaitForComputeTopology:input_type -> gqldb.WaitForComputeTopologyRequest
-	81, // 63: gqldb.AdminService.GetSystemMetrics:input_type -> gqldb.GetSystemMetricsRequest
-	71, // 64: gqldb.BulkImportService.StartBulkImport:input_type -> gqldb.StartBulkImportRequest
-	73, // 65: gqldb.BulkImportService.Checkpoint:input_type -> gqldb.CheckpointRequest
-	75, // 66: gqldb.BulkImportService.EndBulkImport:input_type -> gqldb.EndBulkImportRequest
-	77, // 67: gqldb.BulkImportService.AbortBulkImport:input_type -> gqldb.AbortBulkImportRequest
-	79, // 68: gqldb.BulkImportService.GetBulkImportStatus:input_type -> gqldb.GetBulkImportStatusRequest
-	9,  // 69: gqldb.SessionService.Login:output_type -> gqldb.LoginResponse
-	11, // 70: gqldb.SessionService.Logout:output_type -> gqldb.LogoutResponse
-	13, // 71: gqldb.SessionService.Ping:output_type -> gqldb.PingResponse
-	15, // 72: gqldb.QueryService.Gql:output_type -> gqldb.GqlResponse
-	15, // 73: gqldb.QueryService.GqlStream:output_type -> gqldb.GqlResponse
-	16, // 74: gqldb.QueryService.Explain:output_type -> gqldb.ExplainResponse
-	17, // 75: gqldb.QueryService.Profile:output_type -> gqldb.ProfileResponse
-	23, // 76: gqldb.DataService.InsertNodes:output_type -> gqldb.InsertNodesResponse
-	25, // 77: gqldb.DataService.InsertEdges:output_type -> gqldb.InsertEdgesResponse
-	27, // 78: gqldb.DataService.DeleteNodes:output_type -> gqldb.DeleteNodesResponse
-	29, // 79: gqldb.DataService.DeleteEdges:output_type -> gqldb.DeleteEdgesResponse
-	31, // 80: gqldb.DataService.Export:output_type -> gqldb.ExportResponse
-	34, // 81: gqldb.GraphService.CreateGraph:output_type -> gqldb.CreateGraphResponse
-	36, // 82: gqldb.GraphService.DropGraph:output_type -> gqldb.DropGraphResponse
-	38, // 83: gqldb.GraphService.UseGraph:output_type -> gqldb.UseGraphResponse
-	40, // 84: gqldb.GraphService.ListGraphs:output_type -> gqldb.ListGraphsResponse
-	42, // 85: gqldb.GraphService.GetGraphInfo:output_type -> gqldb.GetGraphInfoResponse
-	45, // 86: gqldb.TransactionService.Begin:output_type -> gqldb.BeginResponse
-	47, // 87: gqldb.TransactionService.Commit:output_type -> gqldb.CommitResponse
-	49, // 88: gqldb.TransactionService.Rollback:output_type -> gqldb.RollbackResponse
-	51, // 89: gqldb.TransactionService.ListTransactions:output_type -> gqldb.ListTransactionsResponse
-	54, // 90: gqldb.Health.Check:output_type -> gqldb.HealthCheckResponse
-	54, // 91: gqldb.Health.Watch:output_type -> gqldb.HealthCheckResponse
-	56, // 92: gqldb.AdminService.WarmupParser:output_type -> gqldb.WarmupParserResponse
-	58, // 93: gqldb.AdminService.GetCacheStats:output_type -> gqldb.CacheStatsResponse
-	62, // 94: gqldb.AdminService.ClearCache:output_type -> gqldb.ClearCacheResponse
-	64, // 95: gqldb.AdminService.GetStatistics:output_type -> gqldb.GetStatisticsResponse
-	66, // 96: gqldb.AdminService.InvalidatePermissionCache:output_type -> gqldb.InvalidatePermissionCacheResponse
-	68, // 97: gqldb.AdminService.Compact:output_type -> gqldb.CompactResponse
-	70, // 98: gqldb.AdminService.WaitForComputeTopology:output_type -> gqldb.WaitForComputeTopologyResponse
-	82, // 99: gqldb.AdminService.GetSystemMetrics:output_type -> gqldb.GetSystemMetricsResponse
-	72, // 100: gqldb.BulkImportService.StartBulkImport:output_type -> gqldb.StartBulkImportResponse
-	74, // 101: gqldb.BulkImportService.Checkpoint:output_type -> gqldb.CheckpointResponse
-	76, // 102: gqldb.BulkImportService.EndBulkImport:output_type -> gqldb.EndBulkImportResponse
-	78, // 103: gqldb.BulkImportService.AbortBulkImport:output_type -> gqldb.AbortBulkImportResponse
-	80, // 104: gqldb.BulkImportService.GetBulkImportStatus:output_type -> gqldb.GetBulkImportStatusResponse
-	69, // [69:105] is the sub-list for method output_type
-	33, // [33:69] is the sub-list for method input_type
+	26, // 42: gqldb.DataService.Export:input_type -> gqldb.ExportRequest
+	29, // 43: gqldb.GraphService.CreateGraph:input_type -> gqldb.CreateGraphRequest
+	31, // 44: gqldb.GraphService.DropGraph:input_type -> gqldb.DropGraphRequest
+	33, // 45: gqldb.GraphService.UseGraph:input_type -> gqldb.UseGraphRequest
+	35, // 46: gqldb.GraphService.ListGraphs:input_type -> gqldb.ListGraphsRequest
+	37, // 47: gqldb.GraphService.GetGraphInfo:input_type -> gqldb.GetGraphInfoRequest
+	40, // 48: gqldb.TransactionService.Begin:input_type -> gqldb.BeginRequest
+	42, // 49: gqldb.TransactionService.Commit:input_type -> gqldb.CommitRequest
+	44, // 50: gqldb.TransactionService.Rollback:input_type -> gqldb.RollbackRequest
+	46, // 51: gqldb.TransactionService.ListTransactions:input_type -> gqldb.ListTransactionsRequest
+	49, // 52: gqldb.Health.Check:input_type -> gqldb.HealthCheckRequest
+	49, // 53: gqldb.Health.Watch:input_type -> gqldb.HealthCheckRequest
+	51, // 54: gqldb.AdminService.WarmupParser:input_type -> gqldb.WarmupParserRequest
+	53, // 55: gqldb.AdminService.GetCacheStats:input_type -> gqldb.GetCacheStatsRequest
+	57, // 56: gqldb.AdminService.ClearCache:input_type -> gqldb.ClearCacheRequest
+	59, // 57: gqldb.AdminService.GetStatistics:input_type -> gqldb.GetStatisticsRequest
+	61, // 58: gqldb.AdminService.InvalidatePermissionCache:input_type -> gqldb.InvalidatePermissionCacheRequest
+	63, // 59: gqldb.AdminService.Compact:input_type -> gqldb.CompactRequest
+	65, // 60: gqldb.AdminService.WaitForComputeTopology:input_type -> gqldb.WaitForComputeTopologyRequest
+	77, // 61: gqldb.AdminService.GetSystemMetrics:input_type -> gqldb.GetSystemMetricsRequest
+	67, // 62: gqldb.BulkImportService.StartBulkImport:input_type -> gqldb.StartBulkImportRequest
+	69, // 63: gqldb.BulkImportService.Checkpoint:input_type -> gqldb.CheckpointRequest
+	71, // 64: gqldb.BulkImportService.EndBulkImport:input_type -> gqldb.EndBulkImportRequest
+	73, // 65: gqldb.BulkImportService.AbortBulkImport:input_type -> gqldb.AbortBulkImportRequest
+	75, // 66: gqldb.BulkImportService.GetBulkImportStatus:input_type -> gqldb.GetBulkImportStatusRequest
+	9,  // 67: gqldb.SessionService.Login:output_type -> gqldb.LoginResponse
+	11, // 68: gqldb.SessionService.Logout:output_type -> gqldb.LogoutResponse
+	13, // 69: gqldb.SessionService.Ping:output_type -> gqldb.PingResponse
+	15, // 70: gqldb.QueryService.Gql:output_type -> gqldb.GqlResponse
+	15, // 71: gqldb.QueryService.GqlStream:output_type -> gqldb.GqlResponse
+	16, // 72: gqldb.QueryService.Explain:output_type -> gqldb.ExplainResponse
+	17, // 73: gqldb.QueryService.Profile:output_type -> gqldb.ProfileResponse
+	23, // 74: gqldb.DataService.InsertNodes:output_type -> gqldb.InsertNodesResponse
+	25, // 75: gqldb.DataService.InsertEdges:output_type -> gqldb.InsertEdgesResponse
+	27, // 76: gqldb.DataService.Export:output_type -> gqldb.ExportResponse
+	30, // 77: gqldb.GraphService.CreateGraph:output_type -> gqldb.CreateGraphResponse
+	32, // 78: gqldb.GraphService.DropGraph:output_type -> gqldb.DropGraphResponse
+	34, // 79: gqldb.GraphService.UseGraph:output_type -> gqldb.UseGraphResponse
+	36, // 80: gqldb.GraphService.ListGraphs:output_type -> gqldb.ListGraphsResponse
+	38, // 81: gqldb.GraphService.GetGraphInfo:output_type -> gqldb.GetGraphInfoResponse
+	41, // 82: gqldb.TransactionService.Begin:output_type -> gqldb.BeginResponse
+	43, // 83: gqldb.TransactionService.Commit:output_type -> gqldb.CommitResponse
+	45, // 84: gqldb.TransactionService.Rollback:output_type -> gqldb.RollbackResponse
+	47, // 85: gqldb.TransactionService.ListTransactions:output_type -> gqldb.ListTransactionsResponse
+	50, // 86: gqldb.Health.Check:output_type -> gqldb.HealthCheckResponse
+	50, // 87: gqldb.Health.Watch:output_type -> gqldb.HealthCheckResponse
+	52, // 88: gqldb.AdminService.WarmupParser:output_type -> gqldb.WarmupParserResponse
+	54, // 89: gqldb.AdminService.GetCacheStats:output_type -> gqldb.CacheStatsResponse
+	58, // 90: gqldb.AdminService.ClearCache:output_type -> gqldb.ClearCacheResponse
+	60, // 91: gqldb.AdminService.GetStatistics:output_type -> gqldb.GetStatisticsResponse
+	62, // 92: gqldb.AdminService.InvalidatePermissionCache:output_type -> gqldb.InvalidatePermissionCacheResponse
+	64, // 93: gqldb.AdminService.Compact:output_type -> gqldb.CompactResponse
+	66, // 94: gqldb.AdminService.WaitForComputeTopology:output_type -> gqldb.WaitForComputeTopologyResponse
+	78, // 95: gqldb.AdminService.GetSystemMetrics:output_type -> gqldb.GetSystemMetricsResponse
+	68, // 96: gqldb.BulkImportService.StartBulkImport:output_type -> gqldb.StartBulkImportResponse
+	70, // 97: gqldb.BulkImportService.Checkpoint:output_type -> gqldb.CheckpointResponse
+	72, // 98: gqldb.BulkImportService.EndBulkImport:output_type -> gqldb.EndBulkImportResponse
+	74, // 99: gqldb.BulkImportService.AbortBulkImport:output_type -> gqldb.AbortBulkImportResponse
+	76, // 100: gqldb.BulkImportService.GetBulkImportStatus:output_type -> gqldb.GetBulkImportStatusResponse
+	67, // [67:101] is the sub-list for method output_type
+	33, // [33:67] is the sub-list for method input_type
 	33, // [33:33] is the sub-list for extension type_name
 	33, // [33:33] is the sub-list for extension extendee
 	0,  // [0:33] is the sub-list for field type_name
@@ -5988,7 +5760,7 @@ func file_gqldb_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gqldb_proto_rawDesc), len(file_gqldb_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   87,
+			NumMessages:   83,
 			NumExtensions: 0,
 			NumServices:   8,
 		},

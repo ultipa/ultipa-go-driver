@@ -857,12 +857,15 @@ func formatStringList(ids []string) string {
 // Rows with a null id are skipped.
 func reshapeEdgeDelete(raw *Response) *Response {
 	out := &Response{
-		Columns:      []string{"e"},
-		Rows:         nil,
-		HasMore:      raw.HasMore,
-		Warnings:     raw.Warnings,
-		RowsAffected: raw.RowsAffected,
-		CurrentGraph: raw.CurrentGraph,
+		Columns:       []string{"e"},
+		Rows:          nil,
+		HasMore:       raw.HasMore,
+		Warnings:      raw.Warnings,
+		RowsAffected:  raw.RowsAffected,
+		CurrentGraph:  raw.CurrentGraph,
+		TimeCostNs:    raw.TimeCostNs,
+		DiskCostNs:    raw.DiskCostNs,
+		ComputeCostNs: raw.ComputeCostNs,
 	}
 	for _, r := range raw.Rows {
 		if len(r.Values) == 0 {
@@ -1374,13 +1377,16 @@ func (c *Client) convertFromServiceResponse(svcResp *services.Response) *Respons
 	}
 
 	resp := &Response{
-		Columns:      svcResp.Columns,
-		Rows:         rows,
-		RowCount:     svcResp.RowCount,
-		HasMore:      svcResp.HasMore,
-		Warnings:     svcResp.Warnings,
-		RowsAffected: svcResp.RowsAffected,
-		CurrentGraph: svcResp.CurrentGraph,
+		Columns:       svcResp.Columns,
+		Rows:          rows,
+		RowCount:      svcResp.RowCount,
+		HasMore:       svcResp.HasMore,
+		Warnings:      svcResp.Warnings,
+		RowsAffected:  svcResp.RowsAffected,
+		CurrentGraph:  svcResp.CurrentGraph,
+		TimeCostNs:    svcResp.TimeCostNs,
+		DiskCostNs:    svcResp.DiskCostNs,
+		ComputeCostNs: svcResp.ComputeCostNs,
 	}
 	resp.PropagateColumnNames()
 	return resp

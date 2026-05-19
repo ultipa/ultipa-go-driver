@@ -128,12 +128,13 @@ func NewTypedValue(v interface{}) (*TypedValue, error) {
 		return &TypedValue{Type: PropertyTypePoint, Data: data}, nil
 
 	case GqldbDate:
-		data := make([]byte, 8)
-		// year is signed int16; uint16 cast preserves the bit pattern.
+		// 4 bytes: year (signed int16) + month + day. Server's parameter
+		// converter strictly requires exactly 4 bytes; the previous 8-byte
+		// padded form was rejected on the $-parameter path.
+		data := make([]byte, 4)
 		binary.LittleEndian.PutUint16(data[0:2], uint16(val.Year))
 		data[2] = val.Month
 		data[3] = val.Day
-		// bytes 4-7 are padding (zeros)
 		return &TypedValue{Type: PropertyTypeDate, Data: data}, nil
 
 	case Point3D:

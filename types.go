@@ -8,6 +8,7 @@ import "github.com/ultipa/ultipa-go-driver/v6/types"
 // Re-export enumerations
 type PropertyType = types.PropertyType
 type GraphType = types.GraphType
+type EdgeIdMode = types.EdgeIdMode
 type HealthStatus = types.HealthStatus
 type CacheType = types.CacheType
 
@@ -50,6 +51,10 @@ const (
 	GraphTypeOpen     = types.GraphTypeOpen
 	GraphTypeClosed   = types.GraphTypeClosed
 	GraphTypeOntology = types.GraphTypeOntology
+
+	EdgeIdUnset    = types.EdgeIdUnset
+	EdgeIdDisabled = types.EdgeIdDisabled
+	EdgeIdEnabled  = types.EdgeIdEnabled
 
 	HealthStatusUnknown        = types.HealthStatusUnknown
 	HealthStatusServing        = types.HealthStatusServing

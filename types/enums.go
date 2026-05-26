@@ -49,6 +49,21 @@ const (
 	GraphTypeOntology GraphType = 2 // Ontology-enabled graph
 )
 
+// EdgeIdMode controls per-graph EDGE_ID feature (server-side opt-in).
+//
+// The gRPC CreateGraph RPC has no EDGE_ID field, so the driver applies
+// EDGE_ID by issuing `ALTER GRAPH <name> SET EDGE_ID ENABLED|DISABLED`
+// after creation. EdgeIdUnset (zero value) means "do not touch" so existing
+// CreateGraph callers and zero-initialized options keep server-default
+// behavior.
+type EdgeIdMode int32
+
+const (
+	EdgeIdUnset    EdgeIdMode = 0 // Sentinel: leave EDGE_ID at server default.
+	EdgeIdDisabled EdgeIdMode = 1
+	EdgeIdEnabled  EdgeIdMode = 2
+)
+
 // HealthStatus represents the health status of a service.
 type HealthStatus int32
 

@@ -242,6 +242,28 @@ func (p *ConnectionPool) checkHealth() {
 	}
 }
 
+// ForceReconnectAll rebuilds every host's gRPC connection in the pool.
+// Called by the client on transport-level errors (UNAVAILABLE / connection
+// reset) so the next RPC gets a fresh channel.  Like reconnect, this does
+// NOT close old channels synchronously — in-flight RPCs on them complete
+// before they're GC'd.
+func (p *ConnectionPool) ForceReconnectAll() {
+	p.mu.RLock()
+	if p.closed {
+		p.mu.RUnlock()
+		return
+	}
+	hosts := make([]string, 0, len(p.connections))
+	for host := range p.connections {
+		hosts = append(hosts, host)
+	}
+	p.mu.RUnlock()
+
+	for _, host := range hosts {
+		p.reconnect(host)
+	}
+}
+
 // reconnect replaces the pool's channel for host with a fresh one.
 //
 // Critically, this does NOT close the old channel.  In-flight RPCs

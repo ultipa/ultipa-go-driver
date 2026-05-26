@@ -201,32 +201,33 @@ func (c *Client) Login(ctx context.Context, username, password string) (*Session
 	return session, nil
 }
 
-// withAutoReconnect executes fn and, if the error is UNAUTHENTICATED,
-// re-logs in with stored credentials and retries fn exactly once.
+// withAutoReconnect executes fn with two recovery behaviours:
+//
+//   - UNAUTHENTICATED — if stored credentials are available, re-login
+//     and retry fn exactly once.
+//   - UNAVAILABLE / "connection reset by peer" — rebuild every channel
+//     in the pool so the NEXT RPC gets a fresh one.  The current call
+//     is NOT retried (caller decides; write-side calls are often not
+//     idempotent).
 func (c *Client) withAutoReconnect(ctx context.Context, fn func() error) error {
 	err := fn()
 	if err == nil {
 		return nil
 	}
 
-	// Only auto-reconnect if we have stored credentials
-	if c.storedUsername == "" {
-		return err
+	// Classify the error once.
+	grpcCode := codes.Unknown
+	if s, ok := status.FromError(err); ok {
+		grpcCode = s.Code()
 	}
+	errMsg := strings.ToLower(err.Error())
 
-	// Check if error is UNAUTHENTICATED (gRPC status code or message text)
-	needsReconnect := false
-	if s, ok := status.FromError(err); ok && s.Code() == codes.Unauthenticated {
-		needsReconnect = true
-	}
-	if !needsReconnect {
-		errMsg := strings.ToLower(err.Error())
-		if strings.Contains(errMsg, "session not found") || strings.Contains(errMsg, "session expired") {
-			needsReconnect = true
-		}
-	}
+	isUnauthenticated := grpcCode == codes.Unauthenticated ||
+		strings.Contains(errMsg, "unauthenticated") ||
+		strings.Contains(errMsg, "session not found") ||
+		strings.Contains(errMsg, "session expired")
 
-	if needsReconnect {
+	if isUnauthenticated && c.storedUsername != "" {
 		// Save current graph context before re-login
 		savedGraph := c.storedGraph
 
@@ -243,6 +244,16 @@ func (c *Client) withAutoReconnect(ctx context.Context, fn func() error) error {
 
 		// Retry the call once
 		return fn()
+	}
+
+	isUnavailable := grpcCode == codes.Unavailable ||
+		strings.Contains(errMsg, "connection reset by peer") ||
+		strings.Contains(errMsg, "socket closed") ||
+		strings.Contains(errMsg, "transport is closing")
+	if isUnavailable && c.pool != nil {
+		// Rebuild every channel so the next call gets a fresh one.
+		// Do NOT retry the current call — caller decides.
+		c.pool.ForceReconnectAll()
 	}
 
 	return err
@@ -366,12 +377,31 @@ func (c *Client) Profile(ctx context.Context, query string, config *QueryConfig)
 
 // CreateGraph creates a new graph.
 func (c *Client) CreateGraph(ctx context.Context, name string, graphType GraphType, description string) error {
+	return c.CreateGraphWithEdgeId(ctx, name, graphType, description, EdgeIdUnset)
+}
+
+// CreateGraphWithEdgeId creates a new graph and optionally sets its EDGE_ID
+// mode. The gRPC CreateGraph RPC has no EDGE_ID field, so when edgeId is not
+// EdgeIdUnset this method first calls the existing gRPC CreateGraph (which
+// preserves description) and then issues an
+// `ALTER GRAPH <name> SET EDGE_ID ENABLED|DISABLED` via GQL.
+// When edgeId is EdgeIdUnset the EDGE_ID setting is left untouched.
+func (c *Client) CreateGraphWithEdgeId(ctx context.Context, name string, graphType GraphType, description string, edgeId EdgeIdMode) error {
 	success, message, err := c.graphSvc.CreateGraph(ctx, name, graphType, description)
 	if err != nil {
 		return NewError(0, "create graph failed", err)
 	}
 	if !success {
 		return NewError(0, message, nil)
+	}
+	if edgeId != EdgeIdUnset {
+		state := "DISABLED"
+		if edgeId == EdgeIdEnabled {
+			state = "ENABLED"
+		}
+		if _, gqlErr := c.Gql(ctx, fmt.Sprintf("ALTER GRAPH %s SET EDGE_ID %s", name, state), nil); gqlErr != nil {
+			return NewError(0, "alter graph set edge_id failed", gqlErr)
+		}
 	}
 	return nil
 }

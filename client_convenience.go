@@ -737,7 +737,7 @@ func insertKeywordForType(config *InsertConfig) string {
 // clause. Each edge is inserted individually using MATCH + INSERT to
 // resolve node IDs:
 //
-//	MATCH (src WHERE id(src) = 'from'), (dst WHERE id(dst) = 'to')
+//	MATCH (src WHERE src._id = 'from'), (dst WHERE dst._id = 'to')
 //	INSERT (src)-[e0:Label {p1: v1}]->(dst)
 //	RETURN e0
 //
@@ -793,7 +793,7 @@ func (c *Client) InsertEdgesGql(ctx context.Context, edges []types.EdgeData, con
 			edgePart = fmt.Sprintf("[%s%s]", varName, labelPart)
 		}
 		gql := fmt.Sprintf(
-			"MATCH (src WHERE id(src) = '%s'), (dst WHERE id(dst) = '%s') %s (src)-%s->(dst) RETURN %s",
+			"MATCH (src WHERE src._id = '%s'), (dst WHERE dst._id = '%s') %s (src)-%s->(dst) RETURN %s",
 			edge.FromNodeID, edge.ToNodeID, insertKeyword, edgePart, varName)
 		resp, err := c.Gql(ctx, gql, qc)
 		if err != nil {

@@ -310,7 +310,9 @@ func TestDeleteAPI_UnknownID(t *testing.T) {
 	}
 }
 
-// (10) EDGE_ID disabled graph
+// (10) EDGE_ID disabled graph — deletion by id must error and guide the
+// user to enable EDGE_ID (server-team decision: edge delete is keyed on
+// e._id and does NOT fall back to the discouraged internal_id(e)).
 func TestDeleteAPI_EdgeIDDisabledGraph(t *testing.T) {
 	if testClient == nil {
 		t.Skip("Auth client not available")
@@ -322,6 +324,11 @@ func TestDeleteAPI_EdgeIDDisabledGraph(t *testing.T) {
 		t.Fatalf("CreateGraph failed: %v", err)
 	}
 	defer testClient.DropGraph(ctx, g, true)
+
+	// New graphs default to EDGE_ID ENABLED; force DISABLED for this test.
+	if _, err := testClient.Gql(ctx, fmt.Sprintf("ALTER GRAPH %s SET EDGE_ID DISABLED", g), nil); err != nil {
+		t.Fatalf("ALTER GRAPH SET EDGE_ID DISABLED failed: %v", err)
+	}
 
 	_, err := testClient.InsertNodesGql(ctx, []gqldb.NodeData{
 		{ID: "a", Labels: []string{"P"}}, {ID: "b", Labels: []string{"P"}},
@@ -337,28 +344,15 @@ func TestDeleteAPI_EdgeIDDisabledGraph(t *testing.T) {
 		t.Fatalf("insert edges: %v", err)
 	}
 
-	r, err := testClient.Gql(ctx, "MATCH ()-[e:Knows]->() RETURN id(e)", &types.QueryConfig{GraphName: g})
-	if err != nil {
-		t.Fatalf("query id(e): %v", err)
-	}
-	if r.RowCount != 2 {
-		t.Fatalf("expected 2 edges; got %d", r.RowCount)
-	}
-	var autoIDs []string
-	for _, row := range r.Rows {
-		v, _ := row.Values[0].ToGo()
-		s, _ := v.(string)
-		autoIDs = append(autoIDs, s)
-	}
-
+	// Deletion by id on a disabled graph must error, guiding to enable EDGE_ID.
 	cfg := gqldb.NewDeleteConfig()
 	cfg.GraphName = g
-	delR, err := testClient.DeleteEdgesByIDs(ctx, autoIDs, cfg)
-	if err != nil {
-		t.Fatalf("delete: %v", err)
+	_, err = testClient.DeleteEdgesByIDs(ctx, []string{"e:1", "e:2"}, cfg)
+	if err == nil {
+		t.Fatalf("DeleteEdgesByIDs must error on an EDGE_ID-disabled graph")
 	}
-	if delR.RowsAffected != 2 {
-		t.Errorf("expected 2 rowsAffected on EDGE_ID-disabled graph; got %d", delR.RowsAffected)
+	if !strings.Contains(err.Error(), "EDGE_ID") && !strings.Contains(err.Error(), "edge _id") {
+		t.Errorf("error must guide toward enabling EDGE_ID; got: %v", err)
 	}
 }
 

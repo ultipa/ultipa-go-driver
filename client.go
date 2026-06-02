@@ -735,7 +735,7 @@ func (c *Client) InsertEdgesBatchAuto(ctx context.Context, graphName string, edg
 }
 
 // DeleteNodesByIDs deletes nodes by id list. Emits
-// `MATCH (n) WHERE id(n) IN [...] DETACH DELETE n RETURN n`.
+// `MATCH (n) WHERE n._id IN [...] DETACH DELETE n RETURN n`.
 // Empty/nil nodeIDs short-circuits without contacting the server.
 // Use response.Alias("n").AsNodes() to access the deleted nodes.
 // With config.ReturnDeleted=false, only RowsAffected is meaningful.
@@ -744,7 +744,7 @@ func (c *Client) DeleteNodesByIDs(ctx context.Context, nodeIDs []string, config 
 	if len(nodeIDs) == 0 {
 		return &Response{}, nil
 	}
-	gql := "MATCH (n) WHERE id(n) IN [" + formatStringList(nodeIDs) + "] DETACH DELETE n"
+	gql := "MATCH (n) WHERE n._id IN [" + formatStringList(nodeIDs) + "] DETACH DELETE n"
 	if cfg.ReturnDeleted {
 		gql += " RETURN n"
 	}
@@ -790,17 +790,20 @@ func (c *Client) DeleteNodesByCondition(ctx context.Context, labels []string, wh
 	return c.Gql(ctx, gql, deleteConfigToQueryConfig(cfg))
 }
 
-// DeleteEdgesByIDs deletes edges by id list. Emits 5-column GQL with
-// id(e), reshapes the response into a single "e" column holding *Edge.
+// DeleteEdgesByIDs deletes edges by id list. Emits 5-column GQL keyed on
+// e._id, reshapes the response into a single "e" column holding *Edge.
 // Use response.Alias("e").AsEdges() — symmetric with the node path.
+// Requires EDGE_ID ENABLED: on a disabled graph the server returns [5017]
+// guiding the caller to ALTER GRAPH <g> SET EDGE_ID ENABLED (deletion does
+// NOT fall back to the discouraged internal_id(e)).
 func (c *Client) DeleteEdgesByIDs(ctx context.Context, edgeIDs []string, config *DeleteConfig) (*Response, error) {
 	cfg := normalizeDeleteConfig(config)
 	if len(edgeIDs) == 0 {
 		return &Response{}, nil
 	}
-	gql := "MATCH ()-[e]->() WHERE id(e) IN [" + formatStringList(edgeIDs) + "] DELETE e"
+	gql := "MATCH ()-[e]->() WHERE e._id IN [" + formatStringList(edgeIDs) + "] DELETE e"
 	if cfg.ReturnDeleted {
-		gql += " RETURN id(e), e._from, e._to, labels(e)[0], properties(e)"
+		gql += " RETURN e._id, e._from, e._to, labels(e)[0], properties(e)"
 	}
 	raw, err := c.Gql(ctx, gql, deleteConfigToQueryConfig(cfg))
 	if err != nil || !cfg.ReturnDeleted {
@@ -834,7 +837,7 @@ func (c *Client) DeleteEdgesByCondition(ctx context.Context, label string, where
 	}
 	gql += " DELETE e"
 	if cfg.ReturnDeleted {
-		gql += " RETURN id(e), e._from, e._to, labels(e)[0], properties(e)"
+		gql += " RETURN e._id, e._from, e._to, labels(e)[0], properties(e)"
 	}
 	raw, err := c.Gql(ctx, gql, deleteConfigToQueryConfig(cfg))
 	if err != nil || !cfg.ReturnDeleted {
@@ -882,7 +885,7 @@ func formatStringList(ids []string) string {
 }
 
 // reshapeEdgeDelete converts a raw 5-column edge-delete Response
-// (id(e), _from, _to, labels(e)[0], properties(e)) into a single
+// (e._id, _from, _to, labels(e)[0], properties(e)) into a single
 // "e" column holding *Edge — symmetric with the node path.
 // Rows with a null id are skipped.
 func reshapeEdgeDelete(raw *Response) *Response {

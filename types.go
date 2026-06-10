@@ -66,6 +66,10 @@ const (
 	CacheTypePlan = types.CacheTypePlan
 )
 
+// GraphTypeFromMode re-exports types.GraphTypeFromMode: parse the textual
+// graph mode from SHOW GRAPHS into a GraphType (case-insensitive).
+var GraphTypeFromMode = types.GraphTypeFromMode
+
 // Re-export core types
 type TypedValue = types.TypedValue
 type Parameter = types.Parameter

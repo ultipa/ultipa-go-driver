@@ -1,6 +1,8 @@
 package types
 
 import (
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
@@ -107,6 +109,13 @@ func (tv *TypedValue) FormatValue() (string, error) {
 			parts[i] = strconv.FormatFloat(float64(f), 'f', -1, 32)
 		}
 		return "[" + strings.Join(parts, ",") + "]", nil
+
+	case PropertyTypeBlob:
+		// Base64 (StdEncoding) — the canonical text form for binary in
+		// CSV/JSON; round-trips with parseBlob in NewTypedValueFromString.
+		if b, ok := val.([]byte); ok {
+			return base64.StdEncoding.EncodeToString(b), nil
+		}
 	}
 
 	return fmt.Sprintf("%v", val), nil
@@ -237,6 +246,34 @@ func NewTypedValueFromString(s string, targetType PropertyType) (*TypedValue, er
 			return nil, err
 		}
 		return NewTypedValue(dts)
+
+	case PropertyTypePoint:
+		p, err := parsePoint(s)
+		if err != nil {
+			return nil, err
+		}
+		return NewTypedValue(p)
+
+	case PropertyTypePoint3D:
+		p, err := parsePoint3D(s)
+		if err != nil {
+			return nil, err
+		}
+		return NewTypedValue(p)
+
+	case PropertyTypeVector:
+		v, err := parseVector(s)
+		if err != nil {
+			return nil, err
+		}
+		return NewTypedValue(v)
+
+	case PropertyTypeBlob:
+		b, err := parseBlob(s)
+		if err != nil {
+			return nil, err
+		}
+		return NewTypedValue(b)
 
 	default:
 		return nil, fmt.Errorf("unsupported target type for string parsing: %d", targetType)
@@ -740,4 +777,219 @@ func splitOffset(s string) (timePart string, offsetMinutes int16, err error) {
 	offsetMinutes = sign * int16(h*60+m)
 
 	return timePart, offsetMinutes, nil
+}
+
+// =============================================================================
+// Spatial / Vector / Blob parse helpers
+// =============================================================================
+
+// parseKeyedFloats extracts the "{k1: v1, k2: v2, ...}" body of a value like
+// `point({latitude: 30.5, longitude: 114.3})` into a lower-cased key->float
+// map. Keys are matched case-insensitively; whitespace is tolerated.
+func parseKeyedFloats(s string) (map[string]float64, error) {
+	l := strings.IndexByte(s, '{')
+	r := strings.LastIndexByte(s, '}')
+	if l < 0 || r < 0 || r < l {
+		return nil, fmt.Errorf("expected {key: value, ...}")
+	}
+	out := make(map[string]float64)
+	for _, pair := range strings.Split(s[l+1:r], ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		kv := strings.SplitN(pair, ":", 2)
+		if len(kv) != 2 {
+			return nil, fmt.Errorf("expected key: value, got %q", pair)
+		}
+		key := strings.ToLower(strings.TrimSpace(kv[0]))
+		v, err := strconv.ParseFloat(strings.TrimSpace(kv[1]), 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid number for %q: %w", key, err)
+		}
+		out[key] = v
+	}
+	return out, nil
+}
+
+// parseFloatList parses a comma-separated list of numbers, tolerating a single
+// wrapping pair of (), [] or no brackets at all: "1,2,3", "(1,2,3)", "[1,2,3]".
+// An empty payload (e.g. "[]") returns an empty, non-nil slice.
+func parseFloatList(s string) ([]float64, error) {
+	s = strings.TrimSpace(s)
+	for _, pair := range [][2]byte{{'(', ')'}, {'[', ']'}, {'{', '}'}} {
+		if len(s) >= 2 && s[0] == pair[0] && s[len(s)-1] == pair[1] {
+			s = s[1 : len(s)-1]
+			break
+		}
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return []float64{}, nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]float64, 0, len(parts))
+	for _, p := range parts {
+		v, err := strconv.ParseFloat(strings.TrimSpace(p), 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid number %q: %w", strings.TrimSpace(p), err)
+		}
+		out = append(out, v)
+	}
+	return out, nil
+}
+
+// parsePoint parses a 2D geographic point. Accepts the canonical
+// `point({latitude: 30.5, longitude: 114.3})` form (keys, any order), the
+// lenient positional form `30.5,114.3` / `(30.5,114.3)` (lat,lon), and the
+// OGC/PostGIS WKT form `POINT(114.3 30.5)` — standard WKT order is
+// `POINT(<longitude> <latitude>)`, i.e. lon FIRST (the opposite of the
+// lenient comma form).
+func parsePoint(s string) (Point, error) {
+	if strings.IndexByte(s, '{') >= 0 {
+		m, err := parseKeyedFloats(s)
+		if err != nil {
+			return Point{}, fmt.Errorf("cannot parse %q as point: %w", s, err)
+		}
+		lat, okLat := m["latitude"]
+		lon, okLon := m["longitude"]
+		if !okLat || !okLon {
+			return Point{}, fmt.Errorf("cannot parse %q as point: expected latitude and longitude keys", s)
+		}
+		return newPoint(lat, lon, s)
+	}
+	if nums, isWKT, err := parseWKTPoint(s); isWKT {
+		if err != nil {
+			return Point{}, fmt.Errorf("cannot parse %q as point: %w", s, err)
+		}
+		if len(nums) != 2 {
+			return Point{}, fmt.Errorf("cannot parse %q as point: WKT POINT expects 2 values (lon lat), got %d", s, len(nums))
+		}
+		// OGC WKT is POINT(lon lat) — longitude first.
+		return newPoint(nums[1], nums[0], s)
+	}
+	nums, err := parseFloatList(s)
+	if err != nil {
+		return Point{}, fmt.Errorf("cannot parse %q as point (expected point({latitude:..,longitude:..}), lat,lon, or POINT(lon lat)): %w", s, err)
+	}
+	if len(nums) != 2 {
+		return Point{}, fmt.Errorf("cannot parse %q as point: expected 2 values (lat,lon), got %d", s, len(nums))
+	}
+	return newPoint(nums[0], nums[1], s)
+}
+
+// parseWKTPoint detects an OGC WKT-style "POINT(a b ...)" literal (case
+// insensitive, optional Z/M dimension tag) and returns the contained floats.
+// Separators may be spaces and/or commas. isWKT reports whether s looked like
+// a WKT POINT literal at all; when true but the body is malformed, err is set.
+// Returns the raw floats in source order; the caller assigns meaning — the 2D
+// geographic Point reads them as OGC lon,lat (longitude first), the 3D Point3D
+// as cartesian x,y,z.
+func parseWKTPoint(s string) (nums []float64, isWKT bool, err error) {
+	t := strings.TrimSpace(s)
+	if len(t) < 5 || !strings.EqualFold(t[:5], "POINT") {
+		return nil, false, nil
+	}
+	t = strings.TrimSpace(t[5:])
+	// Skip an optional dimension tag like "Z", "M" or "ZM".
+	for len(t) > 0 && (t[0] == 'z' || t[0] == 'Z' || t[0] == 'm' || t[0] == 'M') {
+		t = strings.TrimSpace(t[1:])
+	}
+	if len(t) < 2 || t[0] != '(' || t[len(t)-1] != ')' {
+		return nil, false, nil
+	}
+	inner := strings.TrimSpace(t[1 : len(t)-1])
+	if inner == "" {
+		return []float64{}, true, nil
+	}
+	fields := strings.FieldsFunc(inner, func(r rune) bool {
+		return r == ' ' || r == ',' || r == '\t'
+	})
+	out := make([]float64, 0, len(fields))
+	for _, f := range fields {
+		v, perr := strconv.ParseFloat(f, 64)
+		if perr != nil {
+			return nil, true, fmt.Errorf("invalid number %q in WKT POINT: %w", f, perr)
+		}
+		out = append(out, v)
+	}
+	return out, true, nil
+}
+
+func newPoint(lat, lon float64, s string) (Point, error) {
+	if lat < -90 || lat > 90 {
+		return Point{}, fmt.Errorf("cannot parse %q as point: latitude %v out of range [-90,90]", s, lat)
+	}
+	if lon < -180 || lon > 180 {
+		return Point{}, fmt.Errorf("cannot parse %q as point: longitude %v out of range [-180,180]", s, lon)
+	}
+	return Point{Latitude: lat, Longitude: lon}, nil
+}
+
+// parsePoint3D parses a 3D cartesian point. Accepts the canonical
+// `point({x: 1, y: 2, z: 3})` form (keys, any order), the lenient positional
+// form `1,2,3` / `(1,2,3)`, and the WKT form `POINT(1 2 3)` / `POINT Z(1 2 3)`.
+func parsePoint3D(s string) (Point3D, error) {
+	if strings.IndexByte(s, '{') >= 0 {
+		m, err := parseKeyedFloats(s)
+		if err != nil {
+			return Point3D{}, fmt.Errorf("cannot parse %q as point3d: %w", s, err)
+		}
+		x, okX := m["x"]
+		y, okY := m["y"]
+		z, okZ := m["z"]
+		if !okX || !okY || !okZ {
+			return Point3D{}, fmt.Errorf("cannot parse %q as point3d: expected x, y and z keys", s)
+		}
+		return Point3D{X: x, Y: y, Z: z}, nil
+	}
+	if nums, isWKT, err := parseWKTPoint(s); isWKT {
+		if err != nil {
+			return Point3D{}, fmt.Errorf("cannot parse %q as point3d: %w", s, err)
+		}
+		if len(nums) != 3 {
+			return Point3D{}, fmt.Errorf("cannot parse %q as point3d: WKT POINT expects 3 values (x y z), got %d", s, len(nums))
+		}
+		return Point3D{X: nums[0], Y: nums[1], Z: nums[2]}, nil
+	}
+	nums, err := parseFloatList(s)
+	if err != nil {
+		return Point3D{}, fmt.Errorf("cannot parse %q as point3d (expected point({x:..,y:..,z:..}), x,y,z, or POINT(x y z)): %w", s, err)
+	}
+	if len(nums) != 3 {
+		return Point3D{}, fmt.Errorf("cannot parse %q as point3d: expected 3 values (x,y,z), got %d", s, len(nums))
+	}
+	return Point3D{X: nums[0], Y: nums[1], Z: nums[2]}, nil
+}
+
+// parseVector parses a float32 vector. Accepts `[0.1,0.2,0.3]` and the
+// bracket-less `0.1,0.2,0.3`; `[]` yields an empty (non-nil) vector.
+func parseVector(s string) (Vector, error) {
+	nums, err := parseFloatList(s)
+	if err != nil {
+		return Vector{}, fmt.Errorf("cannot parse %q as vector (expected [n,n,...]): %w", s, err)
+	}
+	vals := make([]float32, len(nums))
+	for i, n := range nums {
+		vals[i] = float32(n)
+	}
+	return Vector{Values: vals}, nil
+}
+
+// parseBlob parses binary data. Default is Base64 (StdEncoding); a `0x`/`0X`
+// prefix selects hex. The encoding must be documented for the data source.
+func parseBlob(s string) ([]byte, error) {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
+		b, err := hex.DecodeString(s[2:])
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse %q as blob (invalid hex): %w", s, err)
+		}
+		return b, nil
+	}
+	b, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return nil, fmt.Errorf("cannot parse %q as blob (invalid base64): %w", s, err)
+	}
+	return b, nil
 }

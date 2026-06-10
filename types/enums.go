@@ -1,5 +1,7 @@
 package types
 
+import "strings"
+
 // PropertyType represents the type of a property value.
 type PropertyType int32
 
@@ -48,6 +50,22 @@ const (
 	GraphTypeClosed   GraphType = 1 // Schema-enforced graph
 	GraphTypeOntology GraphType = 2 // Ontology-enabled graph
 )
+
+// GraphTypeFromMode parses the textual graph mode from SHOW GRAPHS (the
+// graph_mode column, formerly graph_type) into a GraphType. Case-insensitive;
+// unknown/empty defaults to GraphTypeOpen. Used by the GQL-based ListGraphs
+// path, which reads the mode string directly instead of the ListGraphs RPC's
+// enum (the latter mis-mapped CLOSED).
+func GraphTypeFromMode(mode string) GraphType {
+	switch strings.ToUpper(strings.TrimSpace(mode)) {
+	case "CLOSED":
+		return GraphTypeClosed
+	case "ONTOLOGY":
+		return GraphTypeOntology
+	default:
+		return GraphTypeOpen
+	}
+}
 
 // EdgeIdMode controls per-graph EDGE_ID feature (server-side opt-in).
 //

@@ -7,6 +7,12 @@ type GraphInfo struct {
 	NodeCount   int64
 	EdgeCount   int64
 	Description string
+	// BoundedGraphType is the server's bounded_graph_type column from
+	// SHOW GRAPHS (new in 6.2.59), passed through as the raw string. It is
+	// an empty string for normal graphs on 6.2.59, and is also empty when
+	// the server does not report the column (older versions; Go has no null
+	// string).
+	BoundedGraphType string
 }
 
 // TransactionInfo contains information about a transaction.

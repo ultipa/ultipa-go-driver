@@ -4,7 +4,9 @@ import (
 	"context"
 	cryptoRand "crypto/rand"
 	"fmt"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	pb "github.com/ultipa/ultipa-go-driver/v6/proto"
@@ -38,10 +40,19 @@ type Client struct {
 	sessions  *SessionManager
 	txManager *TransactionManager
 
-	// Stored credentials for auto-reconnect
+	// Stored credentials for auto-reconnect. Guarded by credMu: written by
+	// Login (which can run on the reconnect path from arbitrary caller
+	// goroutines) and read on classification in withAutoReconnect.
+	credMu         sync.Mutex
 	storedUsername string
 	storedPassword string
-	storedGraph   string
+
+	// Serializes auto-reconnect / channel-rebuild so concurrent session
+	// expiries re-login at most once (single-flight) and don't race on the
+	// service-stub references. The authoritative active graph is NOT tracked
+	// here — it lives in sessions.GetDefaultGraph(), which is updated by BOTH
+	// UseGraph() and Gql("USE GRAPH ...").
+	reconnectMu sync.Mutex
 
 	// Stable per-client logical session id surfaced under the
 	// transaction-branch model (see TRANSACTIONS_DRIVER_GUIDE.md §2.0–2.1).
@@ -189,8 +200,10 @@ func (c *Client) Login(ctx context.Context, username, password string) (*Session
 	}
 
 	// Store credentials for auto-reconnect
+	c.credMu.Lock()
 	c.storedUsername = username
 	c.storedPassword = password
+	c.credMu.Unlock()
 
 	// Register session with SessionManager
 	session := c.sessions.Login(ctx, svcSession.ID, svcSession.ServerVersion, svcSession.Roles, svcSession.DefaultGraph, &ClusterInfo{
@@ -204,12 +217,17 @@ func (c *Client) Login(ctx context.Context, username, password string) (*Session
 // withAutoReconnect executes fn with two recovery behaviours:
 //
 //   - UNAUTHENTICATED — if stored credentials are available, re-login
-//     and retry fn exactly once.
+//     (single-flight) and retry fn exactly once.
 //   - UNAVAILABLE / "connection reset by peer" — rebuild every channel
 //     in the pool so the NEXT RPC gets a fresh one.  The current call
 //     is NOT retried (caller decides; write-side calls are often not
 //     idempotent).
 func (c *Client) withAutoReconnect(ctx context.Context, fn func() error) error {
+	// Capture the session id BEFORE the RPC so autoReconnect can single-flight:
+	// if another goroutine already re-logged in (the id rotates on login), this
+	// caller skips its own re-login and just retries.
+	sid := c.sessions.GetSessionID()
+
 	err := fn()
 	if err == nil {
 		return nil
@@ -227,21 +245,14 @@ func (c *Client) withAutoReconnect(ctx context.Context, fn func() error) error {
 		strings.Contains(errMsg, "session not found") ||
 		strings.Contains(errMsg, "session expired")
 
-	if isUnauthenticated && c.storedUsername != "" {
-		// Save current graph context before re-login
-		savedGraph := c.storedGraph
-
-		// Re-login with stored credentials
-		_, loginErr := c.Login(ctx, c.storedUsername, c.storedPassword)
-		if loginErr != nil {
-			return err // Return original error if re-login fails
+	user, _ := c.storedCredentials()
+	if isUnauthenticated && user != "" {
+		// Re-login (single-flight) and restore the active graph. A re-login
+		// or graph-restore failure surfaces the original error rather than
+		// silently retrying against the wrong/default graph.
+		if reconnectErr := c.autoReconnect(ctx, sid); reconnectErr != nil {
+			return err
 		}
-
-		// Restore graph context after re-login
-		if savedGraph != "" && savedGraph != "__system__" {
-			_ = c.UseGraph(ctx, savedGraph)
-		}
-
 		// Retry the call once
 		return fn()
 	}
@@ -252,11 +263,59 @@ func (c *Client) withAutoReconnect(ctx context.Context, fn func() error) error {
 		strings.Contains(errMsg, "transport is closing")
 	if isUnavailable && c.pool != nil {
 		// Rebuild every channel so the next call gets a fresh one.
-		// Do NOT retry the current call — caller decides.
+		// Do NOT retry the current call — caller decides. ForceReconnectAll
+		// has its own pool mutex, so no client-level lock is needed here.
 		c.pool.ForceReconnectAll()
 	}
 
 	return err
+}
+
+// autoReconnect re-logs in with stored credentials and restores the active
+// graph. Single-flight: expiredSessionID is the session id the caller observed
+// before the failing RPC. Under the lock, if another goroutine has already
+// re-logged in (the id rotates on login), this is a no-op so concurrent
+// expiries trigger exactly one re-login.
+//
+// The graph to restore is read from sessions.GetDefaultGraph() — the
+// authoritative active graph, updated by BOTH UseGraph() and
+// Gql("USE GRAPH ...") — captured BEFORE re-login resets it to the config
+// default. (The old code restored a stale storedGraph that only tracked
+// explicit UseGraph() calls, so a gql-switched graph was silently dropped on
+// reconnect.)
+//
+// A graph-restore failure is NOT swallowed: it propagates so the caller
+// surfaces an error rather than silently retrying against the wrong graph
+// (which returns empty rows with no error).
+func (c *Client) autoReconnect(ctx context.Context, expiredSessionID uint64) error {
+	c.reconnectMu.Lock()
+	defer c.reconnectMu.Unlock()
+
+	if c.sessions.GetSessionID() != expiredSessionID {
+		return nil // another goroutine already re-logged in
+	}
+
+	activeGraph := c.sessions.GetDefaultGraph()
+
+	user, pass := c.storedCredentials()
+	if _, loginErr := c.Login(ctx, user, pass); loginErr != nil {
+		return loginErr
+	}
+
+	if activeGraph != "" && activeGraph != "__system__" {
+		if useErr := c.UseGraph(ctx, activeGraph); useErr != nil {
+			return useErr
+		}
+	}
+	return nil
+}
+
+// storedCredentials returns the credentials captured at the last successful
+// Login, under credMu, for safe concurrent reads on the reconnect path.
+func (c *Client) storedCredentials() (string, string) {
+	c.credMu.Lock()
+	defer c.credMu.Unlock()
+	return c.storedUsername, c.storedPassword
 }
 
 // Logout closes the current session.
@@ -427,50 +486,117 @@ func (c *Client) UseGraph(ctx context.Context, name string) error {
 	if !success {
 		return NewError(0, message, nil)
 	}
-	c.storedGraph = name
+	// The active graph is tracked authoritatively in sessions (GraphService
+	// calls SetDefaultGraph); autoReconnect restores from there.
 	return nil
 }
 
 // ListGraphs returns all available graphs.
+//
+// Implemented over GQL `SHOW GRAPHS` rather than the ListGraphs RPC: the
+// RPC's typed enum mis-maps CLOSED and cannot surface the new
+// bounded_graph_type column. The result is parsed by column name — reading
+// graph_mode (renamed from graph_type in 6.2.59) with a fall-back to the old
+// graph_type name, and passing through bounded_graph_type when present — so
+// it works against both old and new servers.
 func (c *Client) ListGraphs(ctx context.Context) ([]*GraphInfo, error) {
-	svcGraphs, err := c.graphSvc.ListGraphs(ctx)
+	resp, err := c.Gql(ctx, "SHOW GRAPHS", nil)
 	if err != nil {
 		return nil, NewError(0, "list graphs failed", err)
 	}
 
-	graphs := make([]*GraphInfo, len(svcGraphs))
-	for i, g := range svcGraphs {
-		graphs[i] = &GraphInfo{
-			Name:        g.Name,
-			GraphType:   g.GraphType,
-			NodeCount:   g.NodeCount,
-			EdgeCount:   g.EdgeCount,
-			Description: g.Description,
+	graphs := make([]*GraphInfo, 0, len(resp.Rows))
+	for _, row := range resp.Rows {
+		name := strCol(row, "graph_name")
+		mode := strCol(row, "graph_mode")
+		if !row.Has("graph_mode") {
+			// Old server (<= 6.2.50): the mode column is named graph_type.
+			mode = strCol(row, "graph_type")
 		}
+		// bounded_graph_type is new in 6.2.59; absent on older servers (Go
+		// has no null string, so "column absent" maps to "").
+		bounded := strCol(row, "bounded_graph_type")
+		graphs = append(graphs, &GraphInfo{
+			Name:             name,
+			GraphType:        GraphTypeFromMode(mode),
+			NodeCount:        longCol(row, "node_count"),
+			EdgeCount:        longCol(row, "edge_count"),
+			Description:      strCol(row, "comment"),
+			BoundedGraphType: bounded,
+		})
 	}
 	return graphs, nil
 }
 
 // GetGraphInfo returns information about a specific graph.
+//
+// Reuses the GQL-based ListGraphs (SHOW GRAPHS) and filters by name — same
+// reason as ListGraphs: the GetGraphInfo RPC's typed enum mis-maps CLOSED and
+// can't surface bounded_graph_type. Returns ErrGraphNotFound when absent,
+// preserving the prior not-found behavior.
 func (c *Client) GetGraphInfo(ctx context.Context, name string) (*GraphInfo, error) {
-	info, err := c.graphSvc.GetGraphInfo(ctx, name)
+	graphs, err := c.ListGraphs(ctx)
 	if err != nil {
-		if s, ok := status.FromError(err); ok && s.Code() == codes.NotFound {
-			return nil, ErrGraphNotFound
+		return nil, err
+	}
+	for _, g := range graphs {
+		if g.Name == name {
+			return g, nil
 		}
-		return nil, NewError(0, "get graph info failed", err)
 	}
-	if info == nil {
-		return nil, ErrGraphNotFound
-	}
+	return nil, ErrGraphNotFound
+}
 
-	return &GraphInfo{
-		Name:        info.Name,
-		GraphType:   info.GraphType,
-		NodeCount:   info.NodeCount,
-		EdgeCount:   info.EdgeCount,
-		Description: info.Description,
-	}, nil
+// strCol reads a SHOW-GRAPHS cell by column name as a string ("" when the
+// column is absent or the value is nil).
+func strCol(row *Row, col string) string {
+	if !row.Has(col) {
+		return ""
+	}
+	v, err := row.GetByName(col)
+	if err != nil || v == nil {
+		return ""
+	}
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return fmt.Sprintf("%v", v)
+}
+
+// longCol reads a SHOW-GRAPHS cell by column name as an int64 (0 when the
+// column is absent, nil, or unparsable).
+func longCol(row *Row, col string) int64 {
+	if !row.Has(col) {
+		return 0
+	}
+	v, err := row.GetByName(col)
+	if err != nil || v == nil {
+		return 0
+	}
+	switch n := v.(type) {
+	case int64:
+		return n
+	case int32:
+		return int64(n)
+	case int:
+		return int64(n)
+	case uint64:
+		return int64(n)
+	case uint32:
+		return int64(n)
+	case float64:
+		return int64(n)
+	case float32:
+		return int64(n)
+	case string:
+		parsed, perr := strconv.ParseInt(strings.TrimSpace(n), 10, 64)
+		if perr != nil {
+			return 0
+		}
+		return parsed
+	default:
+		return 0
+	}
 }
 
 // =============================================================================

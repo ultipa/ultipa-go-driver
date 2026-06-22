@@ -82,6 +82,12 @@ var NewParameter = types.NewParameter
 // Re-export data types
 type Point = types.Point
 type Point3D = types.Point3D
+
+// Re-export default SRID constants (see types.Point / types.Point3D).
+const (
+	DefaultPoint2DSRID = types.DefaultPoint2DSRID // WGS-84 (geographic)
+	DefaultPoint3DSRID = types.DefaultPoint3DSRID // cartesian, no CRS
+)
 type Decimal = types.Decimal
 type Datetime = types.Datetime
 type LocalDateTime = types.LocalDateTime
@@ -138,6 +144,14 @@ type DeleteConfig = types.DeleteConfig
 type InsertNodesConfig = types.InsertNodesConfig
 type InsertEdgesConfig = types.InsertEdgesConfig
 type HealthWatcher = types.HealthWatcher
+
+// Re-export HA follower-read routing (design §12).
+type ReadPreference = types.ReadPreference
+
+const (
+	ReadPreferenceLeader   = types.ReadPreferenceLeader
+	ReadPreferenceFollower = types.ReadPreferenceFollower
+)
 
 // Re-export AI convenience types.
 type AiStage = types.AiStage

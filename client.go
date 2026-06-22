@@ -40,6 +40,18 @@ type Client struct {
 	sessions  *SessionManager
 	txManager *TransactionManager
 
+	// HA leader-aware routing (design §12). activeHostIdx is the index into
+	// config.Hosts of the endpoint that RPCs are currently pinned to; it advances
+	// on a LEADER_CHANGED reply so the next write lands on the new leader. Guarded
+	// by mu.
+	mu            sync.RWMutex
+	activeHostIdx int
+
+	// followerRouter caches per-host HA status (role + applied index) for opt-in follower-read
+	// routing (design §12). Lazily initialized; guarded by its own mutex. nil until the first
+	// ReadPreferenceFollower query.
+	followerRouter *followerRouter
+
 	// Stored credentials for auto-reconnect. Guarded by credMu: written by
 	// Login (which can run on the reconnect path from arbitrary caller
 	// goroutines) and read on classification in withAutoReconnect.
@@ -114,8 +126,20 @@ func NewClient(config *Config) (*Client, error) {
 	return client, nil
 }
 
-// getConn returns a gRPC connection from the pool.
+// getConn returns the gRPC connection RPCs are currently pinned to: the active
+// host (config.Hosts[activeHostIdx]) when it is healthy, otherwise any healthy
+// connection in the pool. The active host is advanced by leader-aware routing on
+// LEADER_CHANGED so writes follow the leader across a failover.
 func (c *Client) getConn() (*grpc.ClientConn, error) {
+	c.mu.RLock()
+	hosts := c.config.Hosts
+	idx := c.activeHostIdx
+	c.mu.RUnlock()
+	if n := len(hosts); n > 0 {
+		if conn, err := c.pool.GetConnectionForHost(hosts[idx%n]); err == nil {
+			return conn, nil
+		}
+	}
 	return c.pool.GetConnection()
 }
 
@@ -132,22 +156,22 @@ func (c *Client) initClients(conn *grpc.ClientConn) {
 
 	// Initialize service context
 	ctx := &services.ServiceContext{
-		SessionClient:     c.sessionClient,
-		QueryClient:       c.queryClient,
-		DataClient:        c.dataClient,
-		GraphClient:       c.graphClient,
-		TransactionClient: c.transactionClient,
-		HealthClient:      c.healthClient,
-		AdminClient:       c.adminClient,
-		BulkImportClient:  c.bulkImportClient,
-		GetSessionID:        func() uint64 { return c.sessions.GetSessionID() },
-		GetServerVersion:    func() string { return c.sessions.GetServerVersion() },
-		GetClientSessionID:  func() string { return c.clientSessionID },
-		GetDefaultGraph:     func() string { return c.sessions.GetDefaultGraph() },
-		GetTimeout:        func() int { return c.config.TimeoutSeconds() },
-		SetDefaultGraph:   func(name string) { c.sessions.SetDefaultGraph(name) },
-		UpdateActivity:    func() { c.sessions.UpdateActivity() },
-		IsLoggedIn:        func() bool { return c.sessions.IsLoggedIn() },
+		SessionClient:      c.sessionClient,
+		QueryClient:        c.queryClient,
+		DataClient:         c.dataClient,
+		GraphClient:        c.graphClient,
+		TransactionClient:  c.transactionClient,
+		HealthClient:       c.healthClient,
+		AdminClient:        c.adminClient,
+		BulkImportClient:   c.bulkImportClient,
+		GetSessionID:       func() uint64 { return c.sessions.GetSessionID() },
+		GetServerVersion:   func() string { return c.sessions.GetServerVersion() },
+		GetClientSessionID: func() string { return c.clientSessionID },
+		GetDefaultGraph:    func() string { return c.sessions.GetDefaultGraph() },
+		GetTimeout:         func() int { return c.config.TimeoutSeconds() },
+		SetDefaultGraph:    func(name string) { c.sessions.SetDefaultGraph(name) },
+		UpdateActivity:     func() { c.sessions.UpdateActivity() },
+		IsLoggedIn:         func() bool { return c.sessions.IsLoggedIn() },
 	}
 
 	// Initialize all services
@@ -257,6 +281,14 @@ func (c *Client) withAutoReconnect(ctx context.Context, fn func() error) error {
 		return fn()
 	}
 
+	// LEADER_CHANGED (design §12): a write reached a non-leader in HA mode. Rotate
+	// across the configured endpoints to find the new leader and retry there. This
+	// is checked before the generic UNAVAILABLE handling because it carries a
+	// distinct FailedPrecondition marker and a different, write-safe recovery.
+	if isLeaderChangedError(grpcCode, errMsg) {
+		return c.retryOnLeaderChange(ctx, fn, err)
+	}
+
 	isUnavailable := grpcCode == codes.Unavailable ||
 		strings.Contains(errMsg, "connection reset by peer") ||
 		strings.Contains(errMsg, "socket closed") ||
@@ -271,6 +303,123 @@ func (c *Client) withAutoReconnect(ctx context.Context, fn func() error) error {
 	return err
 }
 
+// isLeaderChangedError reports whether err is the server's LEADER_CHANGED signal —
+// a write that reached a non-leader in HA mode (design §12). The marker travels as
+// a FailedPrecondition status carrying "LEADER_CHANGED" in the message.
+func isLeaderChangedError(code codes.Code, lowerMsg string) bool {
+	return code == codes.FailedPrecondition && strings.Contains(lowerMsg, "leader_changed")
+}
+
+// retryOnLeaderChange rotates across the configured endpoints to find the new
+// leader and retries the write there. Sessions are per-node, so each rotation
+// re-logins and restores the graph context. Bounded by the number of hosts (each
+// tried once) with capped backoff, so a cluster mid-election settles but a cluster
+// with no leader fails fast instead of spinning. If a transaction is open the write
+// is NOT re-routed: the new leader has no knowledge of that transaction, so it is
+// aborted with a clear, retryable error (design §13 — explicit-tx writes are not
+// replicated in HA mode; a failover invalidates the open transaction).
+func (c *Client) retryOnLeaderChange(ctx context.Context, fn func() error, origErr error) error {
+	if c.txManager != nil && c.txManager.HasActive() {
+		return NewError(0, "transaction aborted: the leader changed mid-transaction; retry the whole transaction", origErr)
+	}
+	c.mu.RLock()
+	nHosts := len(c.config.Hosts)
+	c.mu.RUnlock()
+	if nHosts <= 1 {
+		return origErr // a single endpoint cannot route to a different leader
+	}
+
+	// Proactive routing (item C7): ask the cluster who the leader is via HAService.GetStatus and
+	// jump straight there, instead of rotating host-by-host. Falls through to the rotation loop when
+	// no leader is reported yet (mid-election) or HAService is unavailable (older server), so the
+	// reactive path remains the robust backstop.
+	if idx, ok := c.proactiveLeaderIdx(ctx); ok {
+		c.mu.Lock()
+		c.activeHostIdx = idx
+		c.mu.Unlock()
+		if rerr := c.reloginActiveHost(ctx); rerr == nil {
+			if rerr := fn(); rerr == nil {
+				return nil // landed on the leader directly, no rotation
+			}
+		}
+		// jump didn't stick (not-yet-ready leader / stale status) — fall through to rotation
+	}
+
+	lastErr := origErr
+	backoff := 50 * time.Millisecond
+	for attempt := 0; attempt < nHosts; attempt++ {
+		if rerr := c.rotateActiveHostAndRelogin(ctx); rerr != nil {
+			lastErr = rerr
+			time.Sleep(backoff)
+			backoff = capLeaderBackoff(backoff)
+			continue
+		}
+		rerr := fn()
+		if rerr == nil {
+			return nil // landed on the leader
+		}
+		code := codes.Unknown
+		if st, ok := status.FromError(rerr); ok {
+			code = st.Code()
+		}
+		if !isLeaderChangedError(code, strings.ToLower(rerr.Error())) {
+			return rerr // a real error on the candidate — surface it, do not keep rotating
+		}
+		lastErr = rerr
+		time.Sleep(backoff)
+		backoff = capLeaderBackoff(backoff)
+	}
+	return lastErr
+}
+
+func capLeaderBackoff(d time.Duration) time.Duration {
+	d *= 2
+	if d > time.Second {
+		return time.Second
+	}
+	return d
+}
+
+// rotateActiveHostAndRelogin advances the pinned endpoint to the next configured
+// host and re-establishes a session there. Login re-targets the service clients via
+// getConn (which now reads the advanced activeHostIdx), so this both moves routing
+// and refreshes the per-node session.
+func (c *Client) rotateActiveHostAndRelogin(ctx context.Context) error {
+	c.mu.Lock()
+	if n := len(c.config.Hosts); n > 0 {
+		c.activeHostIdx = (c.activeHostIdx + 1) % n
+	}
+	c.mu.Unlock()
+	return c.reloginActiveHost(ctx)
+}
+
+// reloginActiveHost re-establishes a session at the CURRENT activeHostIdx and re-points the service
+// clients there (Login → getConn reads activeHostIdx → initClients), restoring the graph context.
+// Used by both rotation (after advancing the index) and proactive leader routing (after jumping the
+// index straight to the GetStatus-reported leader).
+func (c *Client) reloginActiveHost(ctx context.Context) error {
+	// Restore the authoritative active graph (sessions.GetDefaultGraph is updated
+	// by both UseGraph and Gql "USE GRAPH ..."), and re-login under the
+	// single-flight credentials accessor — consistent with autoReconnect.
+	savedGraph := c.sessions.GetDefaultGraph()
+	user, pass := c.storedCredentials()
+	if user == "" {
+		// No stored credentials yet: just re-point the service clients.
+		conn, err := c.getConn()
+		if err != nil {
+			return err
+		}
+		c.initClients(conn)
+		return nil
+	}
+	if _, err := c.Login(ctx, user, pass); err != nil {
+		return err
+	}
+	if savedGraph != "" && savedGraph != "__system__" {
+		_ = c.UseGraph(ctx, savedGraph)
+	}
+	return nil
+}
 // autoReconnect re-logs in with stored credentials and restores the active
 // graph. Single-flight: expiredSessionID is the session id the caller observed
 // before the failing RPC. Under the lock, if another goroutine has already
@@ -350,6 +499,16 @@ func (c *Client) Ping(ctx context.Context) (int64, error) {
 func (c *Client) Gql(ctx context.Context, query string, config *QueryConfig) (*Response, error) {
 	if query == "" {
 		return nil, ErrEmptyQuery
+	}
+
+	// HA follower-read routing (design §12): when the caller opts into ReadPreferenceFollower, try a
+	// fresh-enough follower first; on no eligible follower or a follower error, fall through to the
+	// normal leader-routed path transparently. NOTE: follower reads are eventually consistent within
+	// a freshness bound, NOT read-your-writes.
+	if config != nil && config.ReadPreference == ReadPreferenceFollower {
+		if resp, ok := c.tryFollowerRead(ctx, query, config); ok {
+			return resp, nil
+		}
 	}
 
 	var resp *Response
@@ -1025,6 +1184,7 @@ func reshapeEdgeDelete(raw *Response) *Response {
 		TimeCostNs:    raw.TimeCostNs,
 		DiskCostNs:    raw.DiskCostNs,
 		ComputeCostNs: raw.ComputeCostNs,
+		DmlStats:      raw.DmlStats,
 	}
 	for _, r := range raw.Rows {
 		if len(r.Values) == 0 {
@@ -1546,9 +1706,27 @@ func (c *Client) convertFromServiceResponse(svcResp *services.Response) *Respons
 		TimeCostNs:    svcResp.TimeCostNs,
 		DiskCostNs:    svcResp.DiskCostNs,
 		ComputeCostNs: svcResp.ComputeCostNs,
+		DmlStats:      convertServiceDmlStats(svcResp.DmlStats),
 	}
 	resp.PropagateColumnNames()
 	return resp
+}
+
+// convertServiceDmlStats bridges the internal services.DmlStats onto the
+// public DmlStats. nil stays nil (not a DML query / old server), preserving
+// the "absent != changed nothing" contract.
+func convertServiceDmlStats(s *services.DmlStats) *DmlStats {
+	if s == nil {
+		return nil
+	}
+	return &DmlStats{
+		InsertedNodes: s.InsertedNodes,
+		InsertedEdges: s.InsertedEdges,
+		DeletedNodes:  s.DeletedNodes,
+		DeletedEdges:  s.DeletedEdges,
+		SetNodes:      s.SetNodes,
+		SetEdges:      s.SetEdges,
+	}
 }
 
 // convertProperties converts Go map to proto TypedValue map.

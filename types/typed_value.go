@@ -122,9 +122,14 @@ func NewTypedValue(v interface{}) (*TypedValue, error) {
 		return encodeMap(val)
 
 	case Point:
-		data := make([]byte, 16)
+		data := make([]byte, 20)
 		binary.LittleEndian.PutUint64(data[0:8], math.Float64bits(val.Longitude))
 		binary.LittleEndian.PutUint64(data[8:16], math.Float64bits(val.Latitude))
+		srid := val.SRID
+		if srid == 0 {
+			srid = DefaultPoint2DSRID
+		}
+		binary.LittleEndian.PutUint32(data[16:20], uint32(srid))
 		return &TypedValue{Type: PropertyTypePoint, Data: data}, nil
 
 	case GqldbDate:
@@ -138,10 +143,15 @@ func NewTypedValue(v interface{}) (*TypedValue, error) {
 		return &TypedValue{Type: PropertyTypeDate, Data: data}, nil
 
 	case Point3D:
-		data := make([]byte, 24)
+		data := make([]byte, 28)
 		binary.LittleEndian.PutUint64(data[0:8], math.Float64bits(val.X))
 		binary.LittleEndian.PutUint64(data[8:16], math.Float64bits(val.Y))
 		binary.LittleEndian.PutUint64(data[16:24], math.Float64bits(val.Z))
+		srid := val.SRID
+		if srid == 0 {
+			srid = DefaultPoint3DSRID
+		}
+		binary.LittleEndian.PutUint32(data[24:28], uint32(srid))
 		return &TypedValue{Type: PropertyTypePoint3D, Data: data}, nil
 
 	case Decimal:
@@ -334,20 +344,32 @@ func (tv *TypedValue) ToGo() (interface{}, error) {
 		if len(tv.Data) < 16 {
 			return Point{}, nil
 		}
-		return Point{
+		p := Point{
 			Longitude: math.Float64frombits(binary.LittleEndian.Uint64(tv.Data[0:8])),
 			Latitude:  math.Float64frombits(binary.LittleEndian.Uint64(tv.Data[8:16])),
-		}, nil
+		}
+		if len(tv.Data) >= 20 {
+			p.SRID = int32(binary.LittleEndian.Uint32(tv.Data[16:20]))
+		} else {
+			p.SRID = DefaultPoint2DSRID
+		}
+		return p, nil
 
 	case PropertyTypePoint3D:
 		if len(tv.Data) < 24 {
 			return Point3D{}, nil
 		}
-		return Point3D{
+		p := Point3D{
 			X: math.Float64frombits(binary.LittleEndian.Uint64(tv.Data[0:8])),
 			Y: math.Float64frombits(binary.LittleEndian.Uint64(tv.Data[8:16])),
 			Z: math.Float64frombits(binary.LittleEndian.Uint64(tv.Data[16:24])),
-		}, nil
+		}
+		if len(tv.Data) >= 28 {
+			p.SRID = int32(binary.LittleEndian.Uint32(tv.Data[24:28]))
+		} else {
+			p.SRID = DefaultPoint3DSRID
+		}
+		return p, nil
 
 	case PropertyTypeDecimal:
 		return Decimal{Value: string(tv.Data)}, nil

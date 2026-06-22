@@ -39,6 +39,27 @@ type Response struct {
 	TimeCostNs    int64
 	DiskCostNs    int64
 	ComputeCostNs int64
+	// DmlStats holds per-category data-modification counts for a DML query
+	// (INSERT / SET / REMOVE / DELETE / MERGE). nil for a pure read or a
+	// pre-DmlStats server — treat "absent" as "not a data-modifying query",
+	// NOT as "changed nothing". RowsAffected stays the sum across categories.
+	// Streaming queries populate only on the final batch (HasMore=false),
+	// matching CurrentGraph / RowsAffected / the timing trio.
+	DmlStats *DmlStats
+}
+
+// DmlStats reports per-category data-modification counts, mirroring the
+// server's DmlStats proto message (and the engine ResultSet's DMLStats).
+// Each field counts that op category; Response.RowsAffected is their sum.
+// A nil *DmlStats on a Response means "not a data-modifying query" (pure
+// read or a pre-DmlStats server), NOT "changed nothing".
+type DmlStats struct {
+	InsertedNodes int64
+	InsertedEdges int64
+	DeletedNodes  int64
+	DeletedEdges  int64
+	SetNodes      int64
+	SetEdges      int64
 }
 
 // Row represents a single row in the query result.

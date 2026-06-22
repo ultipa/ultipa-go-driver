@@ -1,5 +1,22 @@
 package types
 
+// ReadPreference selects HA routing for a query (design §12, follower reads).
+type ReadPreference int
+
+const (
+	// ReadPreferenceLeader routes the query to the leader (the default). Reads observe
+	// the latest committed state — read-your-writes holds.
+	ReadPreferenceLeader ReadPreference = iota
+	// ReadPreferenceFollower opts into routing a READ to a follower that is within
+	// MaxStaleness entries of the leader, falling back to the leader when no follower
+	// qualifies (none healthy / all too stale / cluster not HA).
+	//
+	// IMPORTANT: a follower read is eventually consistent with a freshness bound, NOT
+	// read-your-writes — it may not reflect this client's most recent write to the
+	// leader. Opt in only for reads that tolerate bounded staleness.
+	ReadPreferenceFollower
+)
+
 // QueryConfig represents configuration for a GQL query.
 type QueryConfig struct {
 	GraphName     string
@@ -15,6 +32,13 @@ type QueryConfig struct {
 	// MaxPathResults limits the number of paths returned from path queries.
 	// 0 means unlimited.
 	MaxPathResults int64
+	// ReadPreference selects HA routing for this query (design §12). The zero value
+	// (ReadPreferenceLeader) preserves the default leader-routed behavior.
+	ReadPreference ReadPreference
+	// MaxStaleness bounds how far behind the leader a follower may be, in Raft entries,
+	// when ReadPreference is ReadPreferenceFollower. 0 = no bound (any healthy follower).
+	// Ignored for ReadPreferenceLeader.
+	MaxStaleness uint64
 }
 
 // InsertConfig extends QueryConfig with options for convenience insert methods

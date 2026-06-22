@@ -608,16 +608,26 @@ type LoginResponse struct {
 	ClusterId      string `protobuf:"bytes,11,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
 	PartitionCount int32  `protobuf:"varint,12,opt,name=partition_count,json=partitionCount,proto3" json:"partition_count,omitempty"`
 	// Capability tokens advertising supported features. Drivers test for
-	// membership instead of parsing server_version. Tokens are stable
-	// snake_case identifiers; older servers omit this field, drivers must
-	// treat the empty case as "no capabilities advertised". See
-	// server_bugs_open20.md #6.
+	// membership instead of parsing server_version (which is fragile across
+	// build placeholders, pre-release suffixes, calendar versions, etc.).
+	// Tokens are stable identifiers in snake_case; never reused for a different
+	// meaning. Older servers omit this field — drivers must treat the empty
+	// case as "no capabilities advertised" and fall back to feature defaults.
+	// See server_bugs_open20.md #6 for the original ask and the token list.
 	Capabilities []string `protobuf:"bytes,20,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
 	// Session's current graph immediately after Login. Equals
-	// req.default_graph when supplied (and validated), otherwise empty.
-	// Lets new drivers seed their local "current graph" cache without a
-	// follow-up USE GRAPH round-trip. Old servers leave this empty.
-	CurrentGraph  string `protobuf:"bytes,21,opt,name=current_graph,json=currentGraph,proto3" json:"current_graph,omitempty"`
+	// req.default_graph when the request supplied (and validated) one,
+	// otherwise empty. Lets new drivers seed their local "current graph"
+	// cache without a follow-up USE GRAPH round-trip. Old drivers that
+	// do not read this field are unaffected (proto3 additive).
+	CurrentGraph string `protobuf:"bytes,21,opt,name=current_graph,json=currentGraph,proto3" json:"current_graph,omitempty"`
+	// Wall-clock timing of the Login handler. See GqlResponse for the
+	// canonical contract. Login does meaningful work — credential
+	// validation + session creation — so TimeCost is operationally
+	// useful for spotting auth-path latency regressions.
+	TimeCostNs    int64 `protobuf:"varint,22,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,23,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,24,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -708,6 +718,27 @@ func (x *LoginResponse) GetCurrentGraph() string {
 	return ""
 }
 
+func (x *LoginResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *LoginResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *LoginResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
 type LogoutRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -745,8 +776,13 @@ func (*LogoutRequest) Descriptor() ([]byte, []int) {
 }
 
 type LogoutResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Success bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	// Wall-clock timing of the Logout handler. See GqlResponse for the
+	// canonical contract.
+	TimeCostNs    int64 `protobuf:"varint,2,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,3,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,4,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -786,6 +822,27 @@ func (x *LogoutResponse) GetSuccess() bool {
 		return x.Success
 	}
 	return false
+}
+
+func (x *LogoutResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *LogoutResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *LogoutResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
 }
 
 type PingRequest struct {
@@ -968,6 +1025,97 @@ func (x *GqlRequest) GetMaxPathResults() int64 {
 	return 0
 }
 
+// DmlStats reports per-category data-modification counts for a query. Per
+// ISO/IEC 39075, an INSERT/SET/REMOVE/DELETE/MERGE with no RETURN yields no
+// result rows; these counts are the response metadata that summarises what the
+// statement changed (mirrors the engine ResultSet's DMLStats). All zero for a
+// pure read. Proto3 additive: old drivers ignore it, old servers omit it — new
+// drivers must treat an absent / all-zero message as "not reported", not as
+// "changed nothing". rows_affected (GqlResponse field 6) remains the sum.
+type DmlStats struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	InsertedNodes int64                  `protobuf:"varint,1,opt,name=inserted_nodes,json=insertedNodes,proto3" json:"inserted_nodes,omitempty"`
+	InsertedEdges int64                  `protobuf:"varint,2,opt,name=inserted_edges,json=insertedEdges,proto3" json:"inserted_edges,omitempty"`
+	DeletedNodes  int64                  `protobuf:"varint,3,opt,name=deleted_nodes,json=deletedNodes,proto3" json:"deleted_nodes,omitempty"`
+	DeletedEdges  int64                  `protobuf:"varint,4,opt,name=deleted_edges,json=deletedEdges,proto3" json:"deleted_edges,omitempty"`
+	SetNodes      int64                  `protobuf:"varint,5,opt,name=set_nodes,json=setNodes,proto3" json:"set_nodes,omitempty"` // nodes touched by SET / REMOVE / MERGE-on-match
+	SetEdges      int64                  `protobuf:"varint,6,opt,name=set_edges,json=setEdges,proto3" json:"set_edges,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DmlStats) Reset() {
+	*x = DmlStats{}
+	mi := &file_gqldb_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DmlStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DmlStats) ProtoMessage() {}
+
+func (x *DmlStats) ProtoReflect() protoreflect.Message {
+	mi := &file_gqldb_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DmlStats.ProtoReflect.Descriptor instead.
+func (*DmlStats) Descriptor() ([]byte, []int) {
+	return file_gqldb_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *DmlStats) GetInsertedNodes() int64 {
+	if x != nil {
+		return x.InsertedNodes
+	}
+	return 0
+}
+
+func (x *DmlStats) GetInsertedEdges() int64 {
+	if x != nil {
+		return x.InsertedEdges
+	}
+	return 0
+}
+
+func (x *DmlStats) GetDeletedNodes() int64 {
+	if x != nil {
+		return x.DeletedNodes
+	}
+	return 0
+}
+
+func (x *DmlStats) GetDeletedEdges() int64 {
+	if x != nil {
+		return x.DeletedEdges
+	}
+	return 0
+}
+
+func (x *DmlStats) GetSetNodes() int64 {
+	if x != nil {
+		return x.SetNodes
+	}
+	return 0
+}
+
+func (x *DmlStats) GetSetEdges() int64 {
+	if x != nil {
+		return x.SetEdges
+	}
+	return 0
+}
+
 type GqlResponse struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
 	Columns      []string               `protobuf:"bytes,1,rep,name=columns,proto3" json:"columns,omitempty"`
@@ -977,14 +1125,55 @@ type GqlResponse struct {
 	Warnings     []string               `protobuf:"bytes,5,rep,name=warnings,proto3" json:"warnings,omitempty"`
 	RowsAffected int64                  `protobuf:"varint,6,opt,name=rows_affected,json=rowsAffected,proto3" json:"rows_affected,omitempty"` // For DML operations (INSERT/UPDATE/DELETE)
 	// Session's current graph after this query has executed. Always
-	// populated on success; reflects the engine's view (covers
-	// single/compound USE GRAPH at any position, last-write-wins).
-	// Empty means "no graph selected" (e.g. fresh session, or
-	// current graph was DROPPed). Drivers update their local cache
-	// unconditionally on every successful Gql RPC. Old servers leave
-	// this empty; drivers fall back to text parsing in that case.
-	// Streaming GqlStream populates only on the final batch
-	// (has_more=false); intermediate batches leave it empty.
+	// populated on success; drivers should update their local "current
+	// graph" cache from this field unconditionally on successful Gql
+	// RPCs and stop client-side parsing of `USE GRAPH …` text (which
+	// fails on compound queries, multi-line forms, comments, and
+	// future syntax extensions). Old drivers ignore the field
+	// (proto3 additive).
+	//
+	// Population rules:
+	//   - Single `USE GRAPH X` succeeds            -> "X"
+	//   - Compound `USE GRAPH X; <stmt>...`        -> "X"
+	//   - `<stmt>...; USE GRAPH X` (USE last)      -> "X"
+	//   - Multiple `USE GRAPH a; ...; USE GRAPH b` -> "b" (last-write-wins)
+	//   - `DROP GRAPH X` of currently-selected     -> ""  (no graph
+	//     selected; driver should clear its cache and the next RPC
+	//     should not send graph_name)
+	//   - `DROP GRAPH Y` (Y != current)            -> session's
+	//     existing current graph, unchanged
+	//   - Any other successful query               -> session's
+	//     current graph at end of RPC
+	//
+	// Failure semantics (fail-fast):
+	//   - An embedded `USE GRAPH X` that fails (X does not exist,
+	//     RBAC denied, USE inside an active transaction) aborts the
+	//     RPC with a gRPC status error; no GqlResponse is sent and
+	//     current_graph is therefore not affected. Drivers update
+	//     their cache only on successful RPCs, so cache stays
+	//     consistent with server state.
+	//
+	// Transaction semantics:
+	//   - `USE GRAPH X` is rejected by the executor when issued
+	//     inside an active explicit transaction (BEGIN/COMMIT or
+	//     BEGIN/ROLLBACK). The "is current_graph rolled back?"
+	//     question is therefore moot for the GQL form. In autocommit
+	//     mode, USE GRAPH is not rolled back by any subsequent
+	//     ROLLBACK because USE GRAPH does not participate in
+	//     transactional semantics (matches SQL `USE database`).
+	//
+	// Request.graph_name precedence:
+	//   - When `Request.graph_name` is non-empty it overrides session
+	//     state for that single request only (matches PostgreSQL
+	//     `SET LOCAL`). Session state is unchanged. response.current_graph
+	//     reflects the *session* state — what the next call defaults
+	//     to — not the per-request override.
+	//
+	// Streaming:
+	//   - GqlStream populates current_graph only on the final batch
+	//     (has_more=false). Intermediate batches leave it empty so
+	//     drivers update their local cache once per RPC, not per
+	//     batch.
 	CurrentGraph string `protobuf:"bytes,7,opt,name=current_graph,json=currentGraph,proto3" json:"current_graph,omitempty"`
 	// Server-side timing of the underlying query, in nanoseconds. Values
 	// are read from the source DB's ResultSet (TimeCost/DiskCost/
@@ -1017,13 +1206,19 @@ type GqlResponse struct {
 	TimeCostNs    int64 `protobuf:"varint,8,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
 	DiskCostNs    int64 `protobuf:"varint,9,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
 	ComputeCostNs int64 `protobuf:"varint,10,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
+	// Per-category data-modification counts (see DmlStats). Populated for
+	// data-modifying queries. A void modification (DELETE/SET/… with no RETURN)
+	// returns an empty table, so this is the authoritative "what changed"
+	// summary — clients should render it from here, NOT from result rows.
+	// Streaming: final batch only (has_more=false), matching rows_affected.
+	DmlStats      *DmlStats `protobuf:"bytes,11,opt,name=dml_stats,json=dmlStats,proto3" json:"dml_stats,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GqlResponse) Reset() {
 	*x = GqlResponse{}
-	mi := &file_gqldb_proto_msgTypes[10]
+	mi := &file_gqldb_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1035,7 +1230,7 @@ func (x *GqlResponse) String() string {
 func (*GqlResponse) ProtoMessage() {}
 
 func (x *GqlResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[10]
+	mi := &file_gqldb_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1048,7 +1243,7 @@ func (x *GqlResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GqlResponse.ProtoReflect.Descriptor instead.
 func (*GqlResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{10}
+	return file_gqldb_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GqlResponse) GetColumns() []string {
@@ -1121,16 +1316,32 @@ func (x *GqlResponse) GetComputeCostNs() int64 {
 	return 0
 }
 
+func (x *GqlResponse) GetDmlStats() *DmlStats {
+	if x != nil {
+		return x.DmlStats
+	}
+	return nil
+}
+
 type ExplainResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Plan          string                 `protobuf:"bytes,1,opt,name=plan,proto3" json:"plan,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Plan  string                 `protobuf:"bytes,1,opt,name=plan,proto3" json:"plan,omitempty"`
+	// Engine-side timing trio. See GqlResponse (above) for the canonical
+	// contract — same semantics: time_cost_ns is total wall-clock inside
+	// QueryContext for the EXPLAIN call (parse + plan; EXPLAIN does not
+	// execute), with disk_cost_ns / compute_cost_ns as the storage /
+	// in-memory-engine subsets. Typically near-zero for Explain since no
+	// execution occurs.
+	TimeCostNs    int64 `protobuf:"varint,2,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,3,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,4,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ExplainResponse) Reset() {
 	*x = ExplainResponse{}
-	mi := &file_gqldb_proto_msgTypes[11]
+	mi := &file_gqldb_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1142,7 +1353,7 @@ func (x *ExplainResponse) String() string {
 func (*ExplainResponse) ProtoMessage() {}
 
 func (x *ExplainResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[11]
+	mi := &file_gqldb_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1155,7 +1366,7 @@ func (x *ExplainResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainResponse.ProtoReflect.Descriptor instead.
 func (*ExplainResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{11}
+	return file_gqldb_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ExplainResponse) GetPlan() string {
@@ -1165,16 +1376,43 @@ func (x *ExplainResponse) GetPlan() string {
 	return ""
 }
 
+func (x *ExplainResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *ExplainResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *ExplainResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
 type ProfileResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Profile       string                 `protobuf:"bytes,1,opt,name=profile,proto3" json:"profile,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Profile string                 `protobuf:"bytes,1,opt,name=profile,proto3" json:"profile,omitempty"`
+	// Engine-side timing trio. See GqlResponse (above) for the canonical
+	// contract. Profile DOES execute the query, so these values mirror
+	// Gql's: time_cost_ns covers parse + plan + execute end-to-end.
+	TimeCostNs    int64 `protobuf:"varint,2,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,3,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,4,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ProfileResponse) Reset() {
 	*x = ProfileResponse{}
-	mi := &file_gqldb_proto_msgTypes[12]
+	mi := &file_gqldb_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1186,7 +1424,7 @@ func (x *ProfileResponse) String() string {
 func (*ProfileResponse) ProtoMessage() {}
 
 func (x *ProfileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[12]
+	mi := &file_gqldb_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1199,7 +1437,7 @@ func (x *ProfileResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProfileResponse.ProtoReflect.Descriptor instead.
 func (*ProfileResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{12}
+	return file_gqldb_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ProfileResponse) GetProfile() string {
@@ -1207,6 +1445,27 @@ func (x *ProfileResponse) GetProfile() string {
 		return x.Profile
 	}
 	return ""
+}
+
+func (x *ProfileResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *ProfileResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *ProfileResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
 }
 
 type NodeData struct {
@@ -1220,7 +1479,7 @@ type NodeData struct {
 
 func (x *NodeData) Reset() {
 	*x = NodeData{}
-	mi := &file_gqldb_proto_msgTypes[13]
+	mi := &file_gqldb_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1232,7 +1491,7 @@ func (x *NodeData) String() string {
 func (*NodeData) ProtoMessage() {}
 
 func (x *NodeData) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[13]
+	mi := &file_gqldb_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1245,7 +1504,7 @@ func (x *NodeData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeData.ProtoReflect.Descriptor instead.
 func (*NodeData) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{13}
+	return file_gqldb_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *NodeData) GetId() string {
@@ -1282,7 +1541,7 @@ type EdgeData struct {
 
 func (x *EdgeData) Reset() {
 	*x = EdgeData{}
-	mi := &file_gqldb_proto_msgTypes[14]
+	mi := &file_gqldb_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1294,7 +1553,7 @@ func (x *EdgeData) String() string {
 func (*EdgeData) ProtoMessage() {}
 
 func (x *EdgeData) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[14]
+	mi := &file_gqldb_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1307,7 +1566,7 @@ func (x *EdgeData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EdgeData.ProtoReflect.Descriptor instead.
 func (*EdgeData) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{14}
+	return file_gqldb_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *EdgeData) GetLabel() string {
@@ -1357,7 +1616,7 @@ type BulkCreateNodesOptions struct {
 
 func (x *BulkCreateNodesOptions) Reset() {
 	*x = BulkCreateNodesOptions{}
-	mi := &file_gqldb_proto_msgTypes[15]
+	mi := &file_gqldb_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1369,7 +1628,7 @@ func (x *BulkCreateNodesOptions) String() string {
 func (*BulkCreateNodesOptions) ProtoMessage() {}
 
 func (x *BulkCreateNodesOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[15]
+	mi := &file_gqldb_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1382,7 +1641,7 @@ func (x *BulkCreateNodesOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BulkCreateNodesOptions.ProtoReflect.Descriptor instead.
 func (*BulkCreateNodesOptions) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{15}
+	return file_gqldb_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *BulkCreateNodesOptions) GetMode() InsertMode {
@@ -1405,7 +1664,7 @@ type BulkCreateEdgesOptions struct {
 
 func (x *BulkCreateEdgesOptions) Reset() {
 	*x = BulkCreateEdgesOptions{}
-	mi := &file_gqldb_proto_msgTypes[16]
+	mi := &file_gqldb_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1417,7 +1676,7 @@ func (x *BulkCreateEdgesOptions) String() string {
 func (*BulkCreateEdgesOptions) ProtoMessage() {}
 
 func (x *BulkCreateEdgesOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[16]
+	mi := &file_gqldb_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1430,7 +1689,7 @@ func (x *BulkCreateEdgesOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BulkCreateEdgesOptions.ProtoReflect.Descriptor instead.
 func (*BulkCreateEdgesOptions) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{16}
+	return file_gqldb_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *BulkCreateEdgesOptions) GetSkipInvalidNodes() bool {
@@ -1459,7 +1718,7 @@ type InsertNodesRequest struct {
 
 func (x *InsertNodesRequest) Reset() {
 	*x = InsertNodesRequest{}
-	mi := &file_gqldb_proto_msgTypes[17]
+	mi := &file_gqldb_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1471,7 +1730,7 @@ func (x *InsertNodesRequest) String() string {
 func (*InsertNodesRequest) ProtoMessage() {}
 
 func (x *InsertNodesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[17]
+	mi := &file_gqldb_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1484,7 +1743,7 @@ func (x *InsertNodesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InsertNodesRequest.ProtoReflect.Descriptor instead.
 func (*InsertNodesRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{17}
+	return file_gqldb_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *InsertNodesRequest) GetGraphName() string {
@@ -1516,18 +1775,26 @@ func (x *InsertNodesRequest) GetBulkImportSessionId() string {
 }
 
 type InsertNodesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	NodeIds       []string               `protobuf:"bytes,2,rep,name=node_ids,json=nodeIds,proto3" json:"node_ids,omitempty"`
-	NodeCount     int64                  `protobuf:"varint,3,opt,name=node_count,json=nodeCount,proto3" json:"node_count,omitempty"`
-	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Success   bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	NodeIds   []string               `protobuf:"bytes,2,rep,name=node_ids,json=nodeIds,proto3" json:"node_ids,omitempty"`
+	NodeCount int64                  `protobuf:"varint,3,opt,name=node_count,json=nodeCount,proto3" json:"node_count,omitempty"`
+	Message   string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
+	// Wall-clock timing of the InsertNodes handler. See GqlResponse for the
+	// canonical contract — InsertNodes does NOT go through QueryContext, so
+	// time_cost_ns is server-side wall-clock (handler entry → response
+	// construction, includes RBAC + validation + bulk-session work) and
+	// disk_cost_ns / compute_cost_ns are reported as 0 by this RPC.
+	TimeCostNs    int64 `protobuf:"varint,5,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,6,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,7,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *InsertNodesResponse) Reset() {
 	*x = InsertNodesResponse{}
-	mi := &file_gqldb_proto_msgTypes[18]
+	mi := &file_gqldb_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1539,7 +1806,7 @@ func (x *InsertNodesResponse) String() string {
 func (*InsertNodesResponse) ProtoMessage() {}
 
 func (x *InsertNodesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[18]
+	mi := &file_gqldb_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1552,7 +1819,7 @@ func (x *InsertNodesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InsertNodesResponse.ProtoReflect.Descriptor instead.
 func (*InsertNodesResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{18}
+	return file_gqldb_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *InsertNodesResponse) GetSuccess() bool {
@@ -1583,6 +1850,27 @@ func (x *InsertNodesResponse) GetMessage() string {
 	return ""
 }
 
+func (x *InsertNodesResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *InsertNodesResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *InsertNodesResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
 type InsertEdgesRequest struct {
 	state               protoimpl.MessageState  `protogen:"open.v1"`
 	GraphName           string                  `protobuf:"bytes,1,opt,name=graph_name,json=graphName,proto3" json:"graph_name,omitempty"`
@@ -1595,7 +1883,7 @@ type InsertEdgesRequest struct {
 
 func (x *InsertEdgesRequest) Reset() {
 	*x = InsertEdgesRequest{}
-	mi := &file_gqldb_proto_msgTypes[19]
+	mi := &file_gqldb_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1607,7 +1895,7 @@ func (x *InsertEdgesRequest) String() string {
 func (*InsertEdgesRequest) ProtoMessage() {}
 
 func (x *InsertEdgesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[19]
+	mi := &file_gqldb_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1620,7 +1908,7 @@ func (x *InsertEdgesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InsertEdgesRequest.ProtoReflect.Descriptor instead.
 func (*InsertEdgesRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{19}
+	return file_gqldb_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *InsertEdgesRequest) GetGraphName() string {
@@ -1652,19 +1940,25 @@ func (x *InsertEdgesRequest) GetBulkImportSessionId() string {
 }
 
 type InsertEdgesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	EdgeIds       []string               `protobuf:"bytes,2,rep,name=edge_ids,json=edgeIds,proto3" json:"edge_ids,omitempty"`
-	EdgeCount     int64                  `protobuf:"varint,3,opt,name=edge_count,json=edgeCount,proto3" json:"edge_count,omitempty"`
-	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
-	SkippedCount  int64                  `protobuf:"varint,5,opt,name=skipped_count,json=skippedCount,proto3" json:"skipped_count,omitempty"` // Number of edges skipped due to invalid nodes
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Success      bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	EdgeIds      []string               `protobuf:"bytes,2,rep,name=edge_ids,json=edgeIds,proto3" json:"edge_ids,omitempty"`
+	EdgeCount    int64                  `protobuf:"varint,3,opt,name=edge_count,json=edgeCount,proto3" json:"edge_count,omitempty"`
+	Message      string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
+	SkippedCount int64                  `protobuf:"varint,5,opt,name=skipped_count,json=skippedCount,proto3" json:"skipped_count,omitempty"` // Number of edges skipped due to invalid nodes
+	// Wall-clock timing of the InsertEdges handler. See GqlResponse for the
+	// canonical contract — same semantics as InsertNodes: time_cost_ns is
+	// handler-side wall-clock, disk_cost_ns / compute_cost_ns are 0.
+	TimeCostNs    int64 `protobuf:"varint,6,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,7,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,8,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *InsertEdgesResponse) Reset() {
 	*x = InsertEdgesResponse{}
-	mi := &file_gqldb_proto_msgTypes[20]
+	mi := &file_gqldb_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1676,7 +1970,7 @@ func (x *InsertEdgesResponse) String() string {
 func (*InsertEdgesResponse) ProtoMessage() {}
 
 func (x *InsertEdgesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[20]
+	mi := &file_gqldb_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1689,7 +1983,7 @@ func (x *InsertEdgesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InsertEdgesResponse.ProtoReflect.Descriptor instead.
 func (*InsertEdgesResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{20}
+	return file_gqldb_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *InsertEdgesResponse) GetSuccess() bool {
@@ -1727,6 +2021,27 @@ func (x *InsertEdgesResponse) GetSkippedCount() int64 {
 	return 0
 }
 
+func (x *InsertEdgesResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *InsertEdgesResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *InsertEdgesResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
 // ExportRequest configures the streaming export.
 type ExportRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
@@ -1743,7 +2058,7 @@ type ExportRequest struct {
 
 func (x *ExportRequest) Reset() {
 	*x = ExportRequest{}
-	mi := &file_gqldb_proto_msgTypes[21]
+	mi := &file_gqldb_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1755,7 +2070,7 @@ func (x *ExportRequest) String() string {
 func (*ExportRequest) ProtoMessage() {}
 
 func (x *ExportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[21]
+	mi := &file_gqldb_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1768,7 +2083,7 @@ func (x *ExportRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportRequest.ProtoReflect.Descriptor instead.
 func (*ExportRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{21}
+	return file_gqldb_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ExportRequest) GetGraphName() string {
@@ -1832,7 +2147,7 @@ type ExportResponse struct {
 
 func (x *ExportResponse) Reset() {
 	*x = ExportResponse{}
-	mi := &file_gqldb_proto_msgTypes[22]
+	mi := &file_gqldb_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1844,7 +2159,7 @@ func (x *ExportResponse) String() string {
 func (*ExportResponse) ProtoMessage() {}
 
 func (x *ExportResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[22]
+	mi := &file_gqldb_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1857,7 +2172,7 @@ func (x *ExportResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportResponse.ProtoReflect.Descriptor instead.
 func (*ExportResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{22}
+	return file_gqldb_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ExportResponse) GetData() []byte {
@@ -1888,13 +2203,26 @@ type ExportStats struct {
 	EdgesExported int64                  `protobuf:"varint,2,opt,name=edges_exported,json=edgesExported,proto3" json:"edges_exported,omitempty"`
 	BytesWritten  int64                  `protobuf:"varint,3,opt,name=bytes_written,json=bytesWritten,proto3" json:"bytes_written,omitempty"`
 	DurationMs    int64                  `protobuf:"varint,4,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`
+	// Wall-clock timing of the Export handler. See GqlResponse for the
+	// canonical contract. time_cost_ns supersedes duration_ms (nanosecond
+	// precision vs millisecond); duration_ms is retained for back-compat
+	// with older drivers. disk_cost_ns / compute_cost_ns are 0 — Export
+	// doesn't go through QueryContext.
+	//
+	// Streaming contract: ExportStats is only populated on the final
+	// ExportResponse frame (is_final=true). Intermediate frames have no
+	// stats sub-message at all, so the timing trio degenerates to "absent"
+	// for those frames — mirrors the GqlStream final-frame-only pattern.
+	TimeCostNs    int64 `protobuf:"varint,5,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,6,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,7,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ExportStats) Reset() {
 	*x = ExportStats{}
-	mi := &file_gqldb_proto_msgTypes[23]
+	mi := &file_gqldb_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1906,7 +2234,7 @@ func (x *ExportStats) String() string {
 func (*ExportStats) ProtoMessage() {}
 
 func (x *ExportStats) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[23]
+	mi := &file_gqldb_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1919,7 +2247,7 @@ func (x *ExportStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportStats.ProtoReflect.Descriptor instead.
 func (*ExportStats) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{23}
+	return file_gqldb_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ExportStats) GetNodesExported() int64 {
@@ -1950,6 +2278,27 @@ func (x *ExportStats) GetDurationMs() int64 {
 	return 0
 }
 
+func (x *ExportStats) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *ExportStats) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *ExportStats) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
 type CreateGraphRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -1961,7 +2310,7 @@ type CreateGraphRequest struct {
 
 func (x *CreateGraphRequest) Reset() {
 	*x = CreateGraphRequest{}
-	mi := &file_gqldb_proto_msgTypes[24]
+	mi := &file_gqldb_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1973,7 +2322,7 @@ func (x *CreateGraphRequest) String() string {
 func (*CreateGraphRequest) ProtoMessage() {}
 
 func (x *CreateGraphRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[24]
+	mi := &file_gqldb_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1986,7 +2335,7 @@ func (x *CreateGraphRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateGraphRequest.ProtoReflect.Descriptor instead.
 func (*CreateGraphRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{24}
+	return file_gqldb_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *CreateGraphRequest) GetName() string {
@@ -2011,16 +2360,25 @@ func (x *CreateGraphRequest) GetDescription() string {
 }
 
 type CreateGraphResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Success bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Message string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	// Wall-clock timing of the CreateGraph handler. See GqlResponse for the
+	// canonical contract — handler does engine work (CREATE GRAPH via
+	// QueryContext) but timing is reported as server-side wall-clock so the
+	// caller sees end-to-end latency (validation + engine + pool ops).
+	// disk_cost_ns / compute_cost_ns are 0 (the engine ResultSet is
+	// discarded; only wall-clock is captured).
+	TimeCostNs    int64 `protobuf:"varint,3,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,4,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,5,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateGraphResponse) Reset() {
 	*x = CreateGraphResponse{}
-	mi := &file_gqldb_proto_msgTypes[25]
+	mi := &file_gqldb_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2032,7 +2390,7 @@ func (x *CreateGraphResponse) String() string {
 func (*CreateGraphResponse) ProtoMessage() {}
 
 func (x *CreateGraphResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[25]
+	mi := &file_gqldb_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2045,7 +2403,7 @@ func (x *CreateGraphResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateGraphResponse.ProtoReflect.Descriptor instead.
 func (*CreateGraphResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{25}
+	return file_gqldb_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *CreateGraphResponse) GetSuccess() bool {
@@ -2062,6 +2420,27 @@ func (x *CreateGraphResponse) GetMessage() string {
 	return ""
 }
 
+func (x *CreateGraphResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *CreateGraphResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *CreateGraphResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
 type DropGraphRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -2072,7 +2451,7 @@ type DropGraphRequest struct {
 
 func (x *DropGraphRequest) Reset() {
 	*x = DropGraphRequest{}
-	mi := &file_gqldb_proto_msgTypes[26]
+	mi := &file_gqldb_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2084,7 +2463,7 @@ func (x *DropGraphRequest) String() string {
 func (*DropGraphRequest) ProtoMessage() {}
 
 func (x *DropGraphRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[26]
+	mi := &file_gqldb_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2097,7 +2476,7 @@ func (x *DropGraphRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DropGraphRequest.ProtoReflect.Descriptor instead.
 func (*DropGraphRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{26}
+	return file_gqldb_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *DropGraphRequest) GetName() string {
@@ -2115,16 +2494,22 @@ func (x *DropGraphRequest) GetIfExists() bool {
 }
 
 type DropGraphResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Success bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Message string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	// Wall-clock timing of the DropGraph handler. Same semantics as
+	// CreateGraphResponse — wall-clock includes engine drop + pool
+	// teardown. See GqlResponse for the canonical contract.
+	TimeCostNs    int64 `protobuf:"varint,3,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,4,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,5,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DropGraphResponse) Reset() {
 	*x = DropGraphResponse{}
-	mi := &file_gqldb_proto_msgTypes[27]
+	mi := &file_gqldb_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2136,7 +2521,7 @@ func (x *DropGraphResponse) String() string {
 func (*DropGraphResponse) ProtoMessage() {}
 
 func (x *DropGraphResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[27]
+	mi := &file_gqldb_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2149,7 +2534,7 @@ func (x *DropGraphResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DropGraphResponse.ProtoReflect.Descriptor instead.
 func (*DropGraphResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{27}
+	return file_gqldb_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *DropGraphResponse) GetSuccess() bool {
@@ -2166,6 +2551,27 @@ func (x *DropGraphResponse) GetMessage() string {
 	return ""
 }
 
+func (x *DropGraphResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *DropGraphResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *DropGraphResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
 type UseGraphRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -2177,7 +2583,7 @@ type UseGraphRequest struct {
 
 func (x *UseGraphRequest) Reset() {
 	*x = UseGraphRequest{}
-	mi := &file_gqldb_proto_msgTypes[28]
+	mi := &file_gqldb_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2189,7 +2595,7 @@ func (x *UseGraphRequest) String() string {
 func (*UseGraphRequest) ProtoMessage() {}
 
 func (x *UseGraphRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[28]
+	mi := &file_gqldb_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2202,7 +2608,7 @@ func (x *UseGraphRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UseGraphRequest.ProtoReflect.Descriptor instead.
 func (*UseGraphRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{28}
+	return file_gqldb_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *UseGraphRequest) GetName() string {
@@ -2221,16 +2627,22 @@ func (x *UseGraphRequest) GetSessionId() uint64 {
 }
 
 type UseGraphResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Success bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Message string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	// Wall-clock timing of the UseGraph handler. UseGraph doesn't go
+	// through QueryContext (it uses SetGraphContext), so this is pure
+	// server-side wall-clock. disk_cost_ns / compute_cost_ns are 0.
+	TimeCostNs    int64 `protobuf:"varint,3,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,4,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,5,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UseGraphResponse) Reset() {
 	*x = UseGraphResponse{}
-	mi := &file_gqldb_proto_msgTypes[29]
+	mi := &file_gqldb_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2242,7 +2654,7 @@ func (x *UseGraphResponse) String() string {
 func (*UseGraphResponse) ProtoMessage() {}
 
 func (x *UseGraphResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[29]
+	mi := &file_gqldb_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2255,7 +2667,7 @@ func (x *UseGraphResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UseGraphResponse.ProtoReflect.Descriptor instead.
 func (*UseGraphResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{29}
+	return file_gqldb_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *UseGraphResponse) GetSuccess() bool {
@@ -2272,6 +2684,27 @@ func (x *UseGraphResponse) GetMessage() string {
 	return ""
 }
 
+func (x *UseGraphResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *UseGraphResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *UseGraphResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
 type ListGraphsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -2280,7 +2713,7 @@ type ListGraphsRequest struct {
 
 func (x *ListGraphsRequest) Reset() {
 	*x = ListGraphsRequest{}
-	mi := &file_gqldb_proto_msgTypes[30]
+	mi := &file_gqldb_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2292,7 +2725,7 @@ func (x *ListGraphsRequest) String() string {
 func (*ListGraphsRequest) ProtoMessage() {}
 
 func (x *ListGraphsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[30]
+	mi := &file_gqldb_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2305,19 +2738,25 @@ func (x *ListGraphsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGraphsRequest.ProtoReflect.Descriptor instead.
 func (*ListGraphsRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{30}
+	return file_gqldb_proto_rawDescGZIP(), []int{31}
 }
 
 type ListGraphsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Graphs        []*GraphInfo           `protobuf:"bytes,1,rep,name=graphs,proto3" json:"graphs,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Graphs []*GraphInfo           `protobuf:"bytes,1,rep,name=graphs,proto3" json:"graphs,omitempty"`
+	// Wall-clock timing of the ListGraphs handler. See GqlResponse for
+	// the canonical contract. Wall-clock includes the SHOW GRAPHS engine
+	// call + RBAC filtering.
+	TimeCostNs    int64 `protobuf:"varint,2,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,3,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,4,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListGraphsResponse) Reset() {
 	*x = ListGraphsResponse{}
-	mi := &file_gqldb_proto_msgTypes[31]
+	mi := &file_gqldb_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2329,7 +2768,7 @@ func (x *ListGraphsResponse) String() string {
 func (*ListGraphsResponse) ProtoMessage() {}
 
 func (x *ListGraphsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[31]
+	mi := &file_gqldb_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2342,7 +2781,7 @@ func (x *ListGraphsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListGraphsResponse.ProtoReflect.Descriptor instead.
 func (*ListGraphsResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{31}
+	return file_gqldb_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *ListGraphsResponse) GetGraphs() []*GraphInfo {
@@ -2350,6 +2789,27 @@ func (x *ListGraphsResponse) GetGraphs() []*GraphInfo {
 		return x.Graphs
 	}
 	return nil
+}
+
+func (x *ListGraphsResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *ListGraphsResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *ListGraphsResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
 }
 
 type GetGraphInfoRequest struct {
@@ -2361,7 +2821,7 @@ type GetGraphInfoRequest struct {
 
 func (x *GetGraphInfoRequest) Reset() {
 	*x = GetGraphInfoRequest{}
-	mi := &file_gqldb_proto_msgTypes[32]
+	mi := &file_gqldb_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2373,7 +2833,7 @@ func (x *GetGraphInfoRequest) String() string {
 func (*GetGraphInfoRequest) ProtoMessage() {}
 
 func (x *GetGraphInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[32]
+	mi := &file_gqldb_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2386,7 +2846,7 @@ func (x *GetGraphInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGraphInfoRequest.ProtoReflect.Descriptor instead.
 func (*GetGraphInfoRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{32}
+	return file_gqldb_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *GetGraphInfoRequest) GetName() string {
@@ -2397,15 +2857,20 @@ func (x *GetGraphInfoRequest) GetName() string {
 }
 
 type GetGraphInfoResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Info          *GraphInfo             `protobuf:"bytes,1,opt,name=info,proto3" json:"info,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Info  *GraphInfo             `protobuf:"bytes,1,opt,name=info,proto3" json:"info,omitempty"`
+	// Wall-clock timing of the GetGraphInfo handler. See GqlResponse for
+	// the canonical contract.
+	TimeCostNs    int64 `protobuf:"varint,2,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,3,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,4,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetGraphInfoResponse) Reset() {
 	*x = GetGraphInfoResponse{}
-	mi := &file_gqldb_proto_msgTypes[33]
+	mi := &file_gqldb_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2417,7 +2882,7 @@ func (x *GetGraphInfoResponse) String() string {
 func (*GetGraphInfoResponse) ProtoMessage() {}
 
 func (x *GetGraphInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[33]
+	mi := &file_gqldb_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2430,7 +2895,7 @@ func (x *GetGraphInfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGraphInfoResponse.ProtoReflect.Descriptor instead.
 func (*GetGraphInfoResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{33}
+	return file_gqldb_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *GetGraphInfoResponse) GetInfo() *GraphInfo {
@@ -2438,6 +2903,27 @@ func (x *GetGraphInfoResponse) GetInfo() *GraphInfo {
 		return x.Info
 	}
 	return nil
+}
+
+func (x *GetGraphInfoResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *GetGraphInfoResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *GetGraphInfoResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
 }
 
 type GraphInfo struct {
@@ -2453,7 +2939,7 @@ type GraphInfo struct {
 
 func (x *GraphInfo) Reset() {
 	*x = GraphInfo{}
-	mi := &file_gqldb_proto_msgTypes[34]
+	mi := &file_gqldb_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2465,7 +2951,7 @@ func (x *GraphInfo) String() string {
 func (*GraphInfo) ProtoMessage() {}
 
 func (x *GraphInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[34]
+	mi := &file_gqldb_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2478,7 +2964,7 @@ func (x *GraphInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GraphInfo.ProtoReflect.Descriptor instead.
 func (*GraphInfo) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{34}
+	return file_gqldb_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *GraphInfo) GetName() string {
@@ -2529,7 +3015,7 @@ type BeginRequest struct {
 
 func (x *BeginRequest) Reset() {
 	*x = BeginRequest{}
-	mi := &file_gqldb_proto_msgTypes[35]
+	mi := &file_gqldb_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2541,7 +3027,7 @@ func (x *BeginRequest) String() string {
 func (*BeginRequest) ProtoMessage() {}
 
 func (x *BeginRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[35]
+	mi := &file_gqldb_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2554,7 +3040,7 @@ func (x *BeginRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BeginRequest.ProtoReflect.Descriptor instead.
 func (*BeginRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{35}
+	return file_gqldb_proto_rawDescGZIP(), []int{36}
 }
 
 // Deprecated: Marked as deprecated in gqldb.proto.
@@ -2590,13 +3076,19 @@ type BeginResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TransactionId uint64                 `protobuf:"varint,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
 	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	// Wall-clock timing of the Begin handler. See GqlResponse for the
+	// canonical contract. Begin grabs a pool connection and registers a
+	// transaction — typically sub-millisecond. Disk/Compute = 0.
+	TimeCostNs    int64 `protobuf:"varint,3,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,4,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,5,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *BeginResponse) Reset() {
 	*x = BeginResponse{}
-	mi := &file_gqldb_proto_msgTypes[36]
+	mi := &file_gqldb_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2608,7 +3100,7 @@ func (x *BeginResponse) String() string {
 func (*BeginResponse) ProtoMessage() {}
 
 func (x *BeginResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[36]
+	mi := &file_gqldb_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2621,7 +3113,7 @@ func (x *BeginResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BeginResponse.ProtoReflect.Descriptor instead.
 func (*BeginResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{36}
+	return file_gqldb_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *BeginResponse) GetTransactionId() uint64 {
@@ -2638,6 +3130,27 @@ func (x *BeginResponse) GetMessage() string {
 	return ""
 }
 
+func (x *BeginResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *BeginResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *BeginResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
 type CommitRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Deprecated: Marked as deprecated in gqldb.proto.
@@ -2649,7 +3162,7 @@ type CommitRequest struct {
 
 func (x *CommitRequest) Reset() {
 	*x = CommitRequest{}
-	mi := &file_gqldb_proto_msgTypes[37]
+	mi := &file_gqldb_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2661,7 +3174,7 @@ func (x *CommitRequest) String() string {
 func (*CommitRequest) ProtoMessage() {}
 
 func (x *CommitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[37]
+	mi := &file_gqldb_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2674,7 +3187,7 @@ func (x *CommitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommitRequest.ProtoReflect.Descriptor instead.
 func (*CommitRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{37}
+	return file_gqldb_proto_rawDescGZIP(), []int{38}
 }
 
 // Deprecated: Marked as deprecated in gqldb.proto.
@@ -2693,16 +3206,24 @@ func (x *CommitRequest) GetTransactionId() uint64 {
 }
 
 type CommitResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Success bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Message string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	// Wall-clock timing of the Commit handler. NOTE: this captures the
+	// storage flush wall-clock, NOT the transaction lifespan from Begin
+	// through Commit — drivers tracking total transaction time should
+	// sum across the per-RPC times themselves. See GqlResponse for the
+	// canonical contract.
+	TimeCostNs    int64 `protobuf:"varint,3,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,4,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,5,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CommitResponse) Reset() {
 	*x = CommitResponse{}
-	mi := &file_gqldb_proto_msgTypes[38]
+	mi := &file_gqldb_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2714,7 +3235,7 @@ func (x *CommitResponse) String() string {
 func (*CommitResponse) ProtoMessage() {}
 
 func (x *CommitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[38]
+	mi := &file_gqldb_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2727,7 +3248,7 @@ func (x *CommitResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommitResponse.ProtoReflect.Descriptor instead.
 func (*CommitResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{38}
+	return file_gqldb_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *CommitResponse) GetSuccess() bool {
@@ -2744,6 +3265,27 @@ func (x *CommitResponse) GetMessage() string {
 	return ""
 }
 
+func (x *CommitResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *CommitResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *CommitResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
 type RollbackRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Deprecated: Marked as deprecated in gqldb.proto.
@@ -2755,7 +3297,7 @@ type RollbackRequest struct {
 
 func (x *RollbackRequest) Reset() {
 	*x = RollbackRequest{}
-	mi := &file_gqldb_proto_msgTypes[39]
+	mi := &file_gqldb_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2767,7 +3309,7 @@ func (x *RollbackRequest) String() string {
 func (*RollbackRequest) ProtoMessage() {}
 
 func (x *RollbackRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[39]
+	mi := &file_gqldb_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2780,7 +3322,7 @@ func (x *RollbackRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollbackRequest.ProtoReflect.Descriptor instead.
 func (*RollbackRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{39}
+	return file_gqldb_proto_rawDescGZIP(), []int{40}
 }
 
 // Deprecated: Marked as deprecated in gqldb.proto.
@@ -2799,16 +3341,21 @@ func (x *RollbackRequest) GetTransactionId() uint64 {
 }
 
 type RollbackResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Success bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Message string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	// Wall-clock timing of the Rollback handler. See GqlResponse for the
+	// canonical contract.
+	TimeCostNs    int64 `protobuf:"varint,3,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,4,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,5,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RollbackResponse) Reset() {
 	*x = RollbackResponse{}
-	mi := &file_gqldb_proto_msgTypes[40]
+	mi := &file_gqldb_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2820,7 +3367,7 @@ func (x *RollbackResponse) String() string {
 func (*RollbackResponse) ProtoMessage() {}
 
 func (x *RollbackResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[40]
+	mi := &file_gqldb_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2833,7 +3380,7 @@ func (x *RollbackResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollbackResponse.ProtoReflect.Descriptor instead.
 func (*RollbackResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{40}
+	return file_gqldb_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *RollbackResponse) GetSuccess() bool {
@@ -2850,6 +3397,27 @@ func (x *RollbackResponse) GetMessage() string {
 	return ""
 }
 
+func (x *RollbackResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *RollbackResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *RollbackResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
 type ListTransactionsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Deprecated: Marked as deprecated in gqldb.proto.
@@ -2861,7 +3429,7 @@ type ListTransactionsRequest struct {
 
 func (x *ListTransactionsRequest) Reset() {
 	*x = ListTransactionsRequest{}
-	mi := &file_gqldb_proto_msgTypes[41]
+	mi := &file_gqldb_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2873,7 +3441,7 @@ func (x *ListTransactionsRequest) String() string {
 func (*ListTransactionsRequest) ProtoMessage() {}
 
 func (x *ListTransactionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[41]
+	mi := &file_gqldb_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2886,7 +3454,7 @@ func (x *ListTransactionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTransactionsRequest.ProtoReflect.Descriptor instead.
 func (*ListTransactionsRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{41}
+	return file_gqldb_proto_rawDescGZIP(), []int{42}
 }
 
 // Deprecated: Marked as deprecated in gqldb.proto.
@@ -2905,15 +3473,20 @@ func (x *ListTransactionsRequest) GetAllTransactions() bool {
 }
 
 type ListTransactionsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Transactions  []*TransactionInfo     `protobuf:"bytes,1,rep,name=transactions,proto3" json:"transactions,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Transactions []*TransactionInfo     `protobuf:"bytes,1,rep,name=transactions,proto3" json:"transactions,omitempty"`
+	// Wall-clock timing of the ListTransactions handler. See GqlResponse
+	// for the canonical contract.
+	TimeCostNs    int64 `protobuf:"varint,2,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,3,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,4,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListTransactionsResponse) Reset() {
 	*x = ListTransactionsResponse{}
-	mi := &file_gqldb_proto_msgTypes[42]
+	mi := &file_gqldb_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2925,7 +3498,7 @@ func (x *ListTransactionsResponse) String() string {
 func (*ListTransactionsResponse) ProtoMessage() {}
 
 func (x *ListTransactionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[42]
+	mi := &file_gqldb_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2938,7 +3511,7 @@ func (x *ListTransactionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTransactionsResponse.ProtoReflect.Descriptor instead.
 func (*ListTransactionsResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{42}
+	return file_gqldb_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ListTransactionsResponse) GetTransactions() []*TransactionInfo {
@@ -2946,6 +3519,27 @@ func (x *ListTransactionsResponse) GetTransactions() []*TransactionInfo {
 		return x.Transactions
 	}
 	return nil
+}
+
+func (x *ListTransactionsResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *ListTransactionsResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *ListTransactionsResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
 }
 
 type TransactionInfo struct {
@@ -2963,7 +3557,7 @@ type TransactionInfo struct {
 
 func (x *TransactionInfo) Reset() {
 	*x = TransactionInfo{}
-	mi := &file_gqldb_proto_msgTypes[43]
+	mi := &file_gqldb_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2975,7 +3569,7 @@ func (x *TransactionInfo) String() string {
 func (*TransactionInfo) ProtoMessage() {}
 
 func (x *TransactionInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[43]
+	mi := &file_gqldb_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2988,7 +3582,7 @@ func (x *TransactionInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TransactionInfo.ProtoReflect.Descriptor instead.
 func (*TransactionInfo) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{43}
+	return file_gqldb_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *TransactionInfo) GetTransactionId() uint64 {
@@ -3049,7 +3643,7 @@ type HealthCheckRequest struct {
 
 func (x *HealthCheckRequest) Reset() {
 	*x = HealthCheckRequest{}
-	mi := &file_gqldb_proto_msgTypes[44]
+	mi := &file_gqldb_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3061,7 +3655,7 @@ func (x *HealthCheckRequest) String() string {
 func (*HealthCheckRequest) ProtoMessage() {}
 
 func (x *HealthCheckRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[44]
+	mi := &file_gqldb_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3074,7 +3668,7 @@ func (x *HealthCheckRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthCheckRequest.ProtoReflect.Descriptor instead.
 func (*HealthCheckRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{44}
+	return file_gqldb_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *HealthCheckRequest) GetService() string {
@@ -3093,7 +3687,7 @@ type HealthCheckResponse struct {
 
 func (x *HealthCheckResponse) Reset() {
 	*x = HealthCheckResponse{}
-	mi := &file_gqldb_proto_msgTypes[45]
+	mi := &file_gqldb_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3105,7 +3699,7 @@ func (x *HealthCheckResponse) String() string {
 func (*HealthCheckResponse) ProtoMessage() {}
 
 func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[45]
+	mi := &file_gqldb_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3118,7 +3712,7 @@ func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthCheckResponse.ProtoReflect.Descriptor instead.
 func (*HealthCheckResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{45}
+	return file_gqldb_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *HealthCheckResponse) GetStatus() HealthStatus {
@@ -3137,7 +3731,7 @@ type WarmupParserRequest struct {
 
 func (x *WarmupParserRequest) Reset() {
 	*x = WarmupParserRequest{}
-	mi := &file_gqldb_proto_msgTypes[46]
+	mi := &file_gqldb_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3149,7 +3743,7 @@ func (x *WarmupParserRequest) String() string {
 func (*WarmupParserRequest) ProtoMessage() {}
 
 func (x *WarmupParserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[46]
+	mi := &file_gqldb_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3162,7 +3756,7 @@ func (x *WarmupParserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WarmupParserRequest.ProtoReflect.Descriptor instead.
 func (*WarmupParserRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{46}
+	return file_gqldb_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *WarmupParserRequest) GetCount() int32 {
@@ -3173,16 +3767,20 @@ func (x *WarmupParserRequest) GetCount() int32 {
 }
 
 type WarmupParserResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Success bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Message string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	// Wall-clock timing. See GqlResponse for the canonical contract.
+	TimeCostNs    int64 `protobuf:"varint,3,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,4,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,5,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *WarmupParserResponse) Reset() {
 	*x = WarmupParserResponse{}
-	mi := &file_gqldb_proto_msgTypes[47]
+	mi := &file_gqldb_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3194,7 +3792,7 @@ func (x *WarmupParserResponse) String() string {
 func (*WarmupParserResponse) ProtoMessage() {}
 
 func (x *WarmupParserResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[47]
+	mi := &file_gqldb_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3207,7 +3805,7 @@ func (x *WarmupParserResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WarmupParserResponse.ProtoReflect.Descriptor instead.
 func (*WarmupParserResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{47}
+	return file_gqldb_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *WarmupParserResponse) GetSuccess() bool {
@@ -3224,6 +3822,27 @@ func (x *WarmupParserResponse) GetMessage() string {
 	return ""
 }
 
+func (x *WarmupParserResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *WarmupParserResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *WarmupParserResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
 type GetCacheStatsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	CacheType     CacheType              `protobuf:"varint,1,opt,name=cache_type,json=cacheType,proto3,enum=gqldb.CacheType" json:"cache_type,omitempty"`
@@ -3233,7 +3852,7 @@ type GetCacheStatsRequest struct {
 
 func (x *GetCacheStatsRequest) Reset() {
 	*x = GetCacheStatsRequest{}
-	mi := &file_gqldb_proto_msgTypes[48]
+	mi := &file_gqldb_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3245,7 +3864,7 @@ func (x *GetCacheStatsRequest) String() string {
 func (*GetCacheStatsRequest) ProtoMessage() {}
 
 func (x *GetCacheStatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[48]
+	mi := &file_gqldb_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3258,7 +3877,7 @@ func (x *GetCacheStatsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCacheStatsRequest.ProtoReflect.Descriptor instead.
 func (*GetCacheStatsRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{48}
+	return file_gqldb_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *GetCacheStatsRequest) GetCacheType() CacheType {
@@ -3269,16 +3888,20 @@ func (x *GetCacheStatsRequest) GetCacheType() CacheType {
 }
 
 type CacheStatsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	AstStats      *ASTCacheStats         `protobuf:"bytes,1,opt,name=ast_stats,json=astStats,proto3" json:"ast_stats,omitempty"`
-	PlanStats     *PlanCacheStats        `protobuf:"bytes,2,opt,name=plan_stats,json=planStats,proto3" json:"plan_stats,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	AstStats  *ASTCacheStats         `protobuf:"bytes,1,opt,name=ast_stats,json=astStats,proto3" json:"ast_stats,omitempty"`
+	PlanStats *PlanCacheStats        `protobuf:"bytes,2,opt,name=plan_stats,json=planStats,proto3" json:"plan_stats,omitempty"`
+	// Wall-clock timing. See GqlResponse for the canonical contract.
+	TimeCostNs    int64 `protobuf:"varint,3,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,4,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,5,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CacheStatsResponse) Reset() {
 	*x = CacheStatsResponse{}
-	mi := &file_gqldb_proto_msgTypes[49]
+	mi := &file_gqldb_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3290,7 +3913,7 @@ func (x *CacheStatsResponse) String() string {
 func (*CacheStatsResponse) ProtoMessage() {}
 
 func (x *CacheStatsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[49]
+	mi := &file_gqldb_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3303,7 +3926,7 @@ func (x *CacheStatsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CacheStatsResponse.ProtoReflect.Descriptor instead.
 func (*CacheStatsResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{49}
+	return file_gqldb_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *CacheStatsResponse) GetAstStats() *ASTCacheStats {
@@ -3320,6 +3943,27 @@ func (x *CacheStatsResponse) GetPlanStats() *PlanCacheStats {
 	return nil
 }
 
+func (x *CacheStatsResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *CacheStatsResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *CacheStatsResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
 type ASTCacheStats struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Hits          uint64                 `protobuf:"varint,1,opt,name=hits,proto3" json:"hits,omitempty"`
@@ -3333,7 +3977,7 @@ type ASTCacheStats struct {
 
 func (x *ASTCacheStats) Reset() {
 	*x = ASTCacheStats{}
-	mi := &file_gqldb_proto_msgTypes[50]
+	mi := &file_gqldb_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3345,7 +3989,7 @@ func (x *ASTCacheStats) String() string {
 func (*ASTCacheStats) ProtoMessage() {}
 
 func (x *ASTCacheStats) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[50]
+	mi := &file_gqldb_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3358,7 +4002,7 @@ func (x *ASTCacheStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ASTCacheStats.ProtoReflect.Descriptor instead.
 func (*ASTCacheStats) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{50}
+	return file_gqldb_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *ASTCacheStats) GetHits() uint64 {
@@ -3409,7 +4053,7 @@ type PlanCacheStats struct {
 
 func (x *PlanCacheStats) Reset() {
 	*x = PlanCacheStats{}
-	mi := &file_gqldb_proto_msgTypes[51]
+	mi := &file_gqldb_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3421,7 +4065,7 @@ func (x *PlanCacheStats) String() string {
 func (*PlanCacheStats) ProtoMessage() {}
 
 func (x *PlanCacheStats) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[51]
+	mi := &file_gqldb_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3434,7 +4078,7 @@ func (x *PlanCacheStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlanCacheStats.ProtoReflect.Descriptor instead.
 func (*PlanCacheStats) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{51}
+	return file_gqldb_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *PlanCacheStats) GetSize() int32 {
@@ -3481,7 +4125,7 @@ type ClearCacheRequest struct {
 
 func (x *ClearCacheRequest) Reset() {
 	*x = ClearCacheRequest{}
-	mi := &file_gqldb_proto_msgTypes[52]
+	mi := &file_gqldb_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3493,7 +4137,7 @@ func (x *ClearCacheRequest) String() string {
 func (*ClearCacheRequest) ProtoMessage() {}
 
 func (x *ClearCacheRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[52]
+	mi := &file_gqldb_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3506,7 +4150,7 @@ func (x *ClearCacheRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClearCacheRequest.ProtoReflect.Descriptor instead.
 func (*ClearCacheRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{52}
+	return file_gqldb_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *ClearCacheRequest) GetCacheType() CacheType {
@@ -3517,16 +4161,20 @@ func (x *ClearCacheRequest) GetCacheType() CacheType {
 }
 
 type ClearCacheResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Success bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Message string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	// Wall-clock timing. See GqlResponse for the canonical contract.
+	TimeCostNs    int64 `protobuf:"varint,3,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,4,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,5,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ClearCacheResponse) Reset() {
 	*x = ClearCacheResponse{}
-	mi := &file_gqldb_proto_msgTypes[53]
+	mi := &file_gqldb_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3538,7 +4186,7 @@ func (x *ClearCacheResponse) String() string {
 func (*ClearCacheResponse) ProtoMessage() {}
 
 func (x *ClearCacheResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[53]
+	mi := &file_gqldb_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3551,7 +4199,7 @@ func (x *ClearCacheResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClearCacheResponse.ProtoReflect.Descriptor instead.
 func (*ClearCacheResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{53}
+	return file_gqldb_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *ClearCacheResponse) GetSuccess() bool {
@@ -3568,6 +4216,27 @@ func (x *ClearCacheResponse) GetMessage() string {
 	return ""
 }
 
+func (x *ClearCacheResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *ClearCacheResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *ClearCacheResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
 type GetStatisticsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	GraphName     string                 `protobuf:"bytes,1,opt,name=graph_name,json=graphName,proto3" json:"graph_name,omitempty"` // Optional: specific graph, empty = current graph
@@ -3577,7 +4246,7 @@ type GetStatisticsRequest struct {
 
 func (x *GetStatisticsRequest) Reset() {
 	*x = GetStatisticsRequest{}
-	mi := &file_gqldb_proto_msgTypes[54]
+	mi := &file_gqldb_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3589,7 +4258,7 @@ func (x *GetStatisticsRequest) String() string {
 func (*GetStatisticsRequest) ProtoMessage() {}
 
 func (x *GetStatisticsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[54]
+	mi := &file_gqldb_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3602,7 +4271,7 @@ func (x *GetStatisticsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStatisticsRequest.ProtoReflect.Descriptor instead.
 func (*GetStatisticsRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{54}
+	return file_gqldb_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *GetStatisticsRequest) GetGraphName() string {
@@ -3618,13 +4287,17 @@ type GetStatisticsResponse struct {
 	EdgeCount       uint64                 `protobuf:"varint,2,opt,name=edge_count,json=edgeCount,proto3" json:"edge_count,omitempty"`
 	LabelCounts     map[string]uint64      `protobuf:"bytes,3,rep,name=label_counts,json=labelCounts,proto3" json:"label_counts,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
 	EdgeLabelCounts map[string]uint64      `protobuf:"bytes,4,rep,name=edge_label_counts,json=edgeLabelCounts,proto3" json:"edge_label_counts,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Wall-clock timing. See GqlResponse for the canonical contract.
+	TimeCostNs    int64 `protobuf:"varint,5,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,6,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,7,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetStatisticsResponse) Reset() {
 	*x = GetStatisticsResponse{}
-	mi := &file_gqldb_proto_msgTypes[55]
+	mi := &file_gqldb_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3636,7 +4309,7 @@ func (x *GetStatisticsResponse) String() string {
 func (*GetStatisticsResponse) ProtoMessage() {}
 
 func (x *GetStatisticsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[55]
+	mi := &file_gqldb_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3649,7 +4322,7 @@ func (x *GetStatisticsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStatisticsResponse.ProtoReflect.Descriptor instead.
 func (*GetStatisticsResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{55}
+	return file_gqldb_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *GetStatisticsResponse) GetNodeCount() uint64 {
@@ -3680,6 +4353,27 @@ func (x *GetStatisticsResponse) GetEdgeLabelCounts() map[string]uint64 {
 	return nil
 }
 
+func (x *GetStatisticsResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *GetStatisticsResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *GetStatisticsResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
 type InvalidatePermissionCacheRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Username      string                 `protobuf:"bytes,1,opt,name=username,proto3" json:"username,omitempty"` // Optional: specific user, empty = all users
@@ -3689,7 +4383,7 @@ type InvalidatePermissionCacheRequest struct {
 
 func (x *InvalidatePermissionCacheRequest) Reset() {
 	*x = InvalidatePermissionCacheRequest{}
-	mi := &file_gqldb_proto_msgTypes[56]
+	mi := &file_gqldb_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3701,7 +4395,7 @@ func (x *InvalidatePermissionCacheRequest) String() string {
 func (*InvalidatePermissionCacheRequest) ProtoMessage() {}
 
 func (x *InvalidatePermissionCacheRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[56]
+	mi := &file_gqldb_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3714,7 +4408,7 @@ func (x *InvalidatePermissionCacheRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InvalidatePermissionCacheRequest.ProtoReflect.Descriptor instead.
 func (*InvalidatePermissionCacheRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{56}
+	return file_gqldb_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *InvalidatePermissionCacheRequest) GetUsername() string {
@@ -3725,15 +4419,19 @@ func (x *InvalidatePermissionCacheRequest) GetUsername() string {
 }
 
 type InvalidatePermissionCacheResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Success bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	// Wall-clock timing. See GqlResponse for the canonical contract.
+	TimeCostNs    int64 `protobuf:"varint,2,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,3,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,4,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *InvalidatePermissionCacheResponse) Reset() {
 	*x = InvalidatePermissionCacheResponse{}
-	mi := &file_gqldb_proto_msgTypes[57]
+	mi := &file_gqldb_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3745,7 +4443,7 @@ func (x *InvalidatePermissionCacheResponse) String() string {
 func (*InvalidatePermissionCacheResponse) ProtoMessage() {}
 
 func (x *InvalidatePermissionCacheResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[57]
+	mi := &file_gqldb_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3758,7 +4456,7 @@ func (x *InvalidatePermissionCacheResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use InvalidatePermissionCacheResponse.ProtoReflect.Descriptor instead.
 func (*InvalidatePermissionCacheResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{57}
+	return file_gqldb_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *InvalidatePermissionCacheResponse) GetSuccess() bool {
@@ -3766,6 +4464,27 @@ func (x *InvalidatePermissionCacheResponse) GetSuccess() bool {
 		return x.Success
 	}
 	return false
+}
+
+func (x *InvalidatePermissionCacheResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *InvalidatePermissionCacheResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *InvalidatePermissionCacheResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
 }
 
 type CompactRequest struct {
@@ -3776,7 +4495,7 @@ type CompactRequest struct {
 
 func (x *CompactRequest) Reset() {
 	*x = CompactRequest{}
-	mi := &file_gqldb_proto_msgTypes[58]
+	mi := &file_gqldb_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3788,7 +4507,7 @@ func (x *CompactRequest) String() string {
 func (*CompactRequest) ProtoMessage() {}
 
 func (x *CompactRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[58]
+	mi := &file_gqldb_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3801,20 +4520,26 @@ func (x *CompactRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompactRequest.ProtoReflect.Descriptor instead.
 func (*CompactRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{58}
+	return file_gqldb_proto_rawDescGZIP(), []int{59}
 }
 
 type CompactResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Success bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Message string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	// Wall-clock timing. See GqlResponse for the canonical contract.
+	// Compact is one of the slowest admin RPCs — TimeCost is operationally
+	// meaningful for spotting growing storage compactions.
+	TimeCostNs    int64 `protobuf:"varint,3,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,4,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,5,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CompactResponse) Reset() {
 	*x = CompactResponse{}
-	mi := &file_gqldb_proto_msgTypes[59]
+	mi := &file_gqldb_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3826,7 +4551,7 @@ func (x *CompactResponse) String() string {
 func (*CompactResponse) ProtoMessage() {}
 
 func (x *CompactResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[59]
+	mi := &file_gqldb_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3839,7 +4564,7 @@ func (x *CompactResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompactResponse.ProtoReflect.Descriptor instead.
 func (*CompactResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{59}
+	return file_gqldb_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *CompactResponse) GetSuccess() bool {
@@ -3856,6 +4581,27 @@ func (x *CompactResponse) GetMessage() string {
 	return ""
 }
 
+func (x *CompactResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *CompactResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *CompactResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
 type WaitForComputeTopologyRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	GraphName     string                 `protobuf:"bytes,1,opt,name=graph_name,json=graphName,proto3" json:"graph_name,omitempty"`  // Graph to check (required)
@@ -3866,7 +4612,7 @@ type WaitForComputeTopologyRequest struct {
 
 func (x *WaitForComputeTopologyRequest) Reset() {
 	*x = WaitForComputeTopologyRequest{}
-	mi := &file_gqldb_proto_msgTypes[60]
+	mi := &file_gqldb_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3878,7 +4624,7 @@ func (x *WaitForComputeTopologyRequest) String() string {
 func (*WaitForComputeTopologyRequest) ProtoMessage() {}
 
 func (x *WaitForComputeTopologyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[60]
+	mi := &file_gqldb_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3891,7 +4637,7 @@ func (x *WaitForComputeTopologyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WaitForComputeTopologyRequest.ProtoReflect.Descriptor instead.
 func (*WaitForComputeTopologyRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{60}
+	return file_gqldb_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *WaitForComputeTopologyRequest) GetGraphName() string {
@@ -3909,16 +4655,22 @@ func (x *WaitForComputeTopologyRequest) GetTimeoutMs() int64 {
 }
 
 type WaitForComputeTopologyResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ready         bool                   `protobuf:"varint,1,opt,name=ready,proto3" json:"ready,omitempty"`    // true if topology is ready, false if timeout/not enabled
-	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"` // Additional status message
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Ready   bool                   `protobuf:"varint,1,opt,name=ready,proto3" json:"ready,omitempty"`    // true if topology is ready, false if timeout/not enabled
+	Message string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"` // Additional status message
+	// Wall-clock timing. See GqlResponse for the canonical contract.
+	// TimeCost captures how long the caller waited for the topology to
+	// become ready (or for the timeout to fire).
+	TimeCostNs    int64 `protobuf:"varint,3,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,4,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,5,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *WaitForComputeTopologyResponse) Reset() {
 	*x = WaitForComputeTopologyResponse{}
-	mi := &file_gqldb_proto_msgTypes[61]
+	mi := &file_gqldb_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3930,7 +4682,7 @@ func (x *WaitForComputeTopologyResponse) String() string {
 func (*WaitForComputeTopologyResponse) ProtoMessage() {}
 
 func (x *WaitForComputeTopologyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[61]
+	mi := &file_gqldb_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3943,7 +4695,7 @@ func (x *WaitForComputeTopologyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WaitForComputeTopologyResponse.ProtoReflect.Descriptor instead.
 func (*WaitForComputeTopologyResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{61}
+	return file_gqldb_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *WaitForComputeTopologyResponse) GetReady() bool {
@@ -3960,586 +4712,23 @@ func (x *WaitForComputeTopologyResponse) GetMessage() string {
 	return ""
 }
 
-type StartBulkImportRequest struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	GraphName       string                 `protobuf:"bytes,1,opt,name=graph_name,json=graphName,proto3" json:"graph_name,omitempty"`
-	CheckpointEvery int64                  `protobuf:"varint,2,opt,name=checkpoint_every,json=checkpointEvery,proto3" json:"checkpoint_every,omitempty"` // Records between auto-checkpoints (0 = manual only)
-	EstimatedNodes  int64                  `protobuf:"varint,3,opt,name=estimated_nodes,json=estimatedNodes,proto3" json:"estimated_nodes,omitempty"`    // Hint for pre-allocating node ID cache
-	EstimatedEdges  int64                  `protobuf:"varint,4,opt,name=estimated_edges,json=estimatedEdges,proto3" json:"estimated_edges,omitempty"`    // Hint for edge batch sizing
-	MemtableSize    int64                  `protobuf:"varint,5,opt,name=memtable_size,json=memtableSize,proto3" json:"memtable_size,omitempty"`          // Memtable size in bytes before flush (default: 64MB)
-	MaxMemtables    int32                  `protobuf:"varint,6,opt,name=max_memtables,json=maxMemtables,proto3" json:"max_memtables,omitempty"`          // Max immutable memtables before stall (default: 4)
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
-}
-
-func (x *StartBulkImportRequest) Reset() {
-	*x = StartBulkImportRequest{}
-	mi := &file_gqldb_proto_msgTypes[62]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *StartBulkImportRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*StartBulkImportRequest) ProtoMessage() {}
-
-func (x *StartBulkImportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[62]
+func (x *WaitForComputeTopologyResponse) GetTimeCostNs() int64 {
 	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use StartBulkImportRequest.ProtoReflect.Descriptor instead.
-func (*StartBulkImportRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{62}
-}
-
-func (x *StartBulkImportRequest) GetGraphName() string {
-	if x != nil {
-		return x.GraphName
-	}
-	return ""
-}
-
-func (x *StartBulkImportRequest) GetCheckpointEvery() int64 {
-	if x != nil {
-		return x.CheckpointEvery
+		return x.TimeCostNs
 	}
 	return 0
 }
 
-func (x *StartBulkImportRequest) GetEstimatedNodes() int64 {
+func (x *WaitForComputeTopologyResponse) GetDiskCostNs() int64 {
 	if x != nil {
-		return x.EstimatedNodes
+		return x.DiskCostNs
 	}
 	return 0
 }
 
-func (x *StartBulkImportRequest) GetEstimatedEdges() int64 {
+func (x *WaitForComputeTopologyResponse) GetComputeCostNs() int64 {
 	if x != nil {
-		return x.EstimatedEdges
-	}
-	return 0
-}
-
-func (x *StartBulkImportRequest) GetMemtableSize() int64 {
-	if x != nil {
-		return x.MemtableSize
-	}
-	return 0
-}
-
-func (x *StartBulkImportRequest) GetMaxMemtables() int32 {
-	if x != nil {
-		return x.MaxMemtables
-	}
-	return 0
-}
-
-type StartBulkImportResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	SessionId     string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"` // UUID for the session
-	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *StartBulkImportResponse) Reset() {
-	*x = StartBulkImportResponse{}
-	mi := &file_gqldb_proto_msgTypes[63]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *StartBulkImportResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*StartBulkImportResponse) ProtoMessage() {}
-
-func (x *StartBulkImportResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[63]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use StartBulkImportResponse.ProtoReflect.Descriptor instead.
-func (*StartBulkImportResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{63}
-}
-
-func (x *StartBulkImportResponse) GetSuccess() bool {
-	if x != nil {
-		return x.Success
-	}
-	return false
-}
-
-func (x *StartBulkImportResponse) GetSessionId() string {
-	if x != nil {
-		return x.SessionId
-	}
-	return ""
-}
-
-func (x *StartBulkImportResponse) GetMessage() string {
-	if x != nil {
-		return x.Message
-	}
-	return ""
-}
-
-type CheckpointRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *CheckpointRequest) Reset() {
-	*x = CheckpointRequest{}
-	mi := &file_gqldb_proto_msgTypes[64]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *CheckpointRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*CheckpointRequest) ProtoMessage() {}
-
-func (x *CheckpointRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[64]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use CheckpointRequest.ProtoReflect.Descriptor instead.
-func (*CheckpointRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{64}
-}
-
-func (x *CheckpointRequest) GetSessionId() string {
-	if x != nil {
-		return x.SessionId
-	}
-	return ""
-}
-
-type CheckpointResponse struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	Success             bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	RecordCount         int64                  `protobuf:"varint,2,opt,name=record_count,json=recordCount,proto3" json:"record_count,omitempty"`
-	LastCheckpointCount int64                  `protobuf:"varint,3,opt,name=last_checkpoint_count,json=lastCheckpointCount,proto3" json:"last_checkpoint_count,omitempty"`
-	Message             string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
-}
-
-func (x *CheckpointResponse) Reset() {
-	*x = CheckpointResponse{}
-	mi := &file_gqldb_proto_msgTypes[65]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *CheckpointResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*CheckpointResponse) ProtoMessage() {}
-
-func (x *CheckpointResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[65]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use CheckpointResponse.ProtoReflect.Descriptor instead.
-func (*CheckpointResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{65}
-}
-
-func (x *CheckpointResponse) GetSuccess() bool {
-	if x != nil {
-		return x.Success
-	}
-	return false
-}
-
-func (x *CheckpointResponse) GetRecordCount() int64 {
-	if x != nil {
-		return x.RecordCount
-	}
-	return 0
-}
-
-func (x *CheckpointResponse) GetLastCheckpointCount() int64 {
-	if x != nil {
-		return x.LastCheckpointCount
-	}
-	return 0
-}
-
-func (x *CheckpointResponse) GetMessage() string {
-	if x != nil {
-		return x.Message
-	}
-	return ""
-}
-
-type EndBulkImportRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *EndBulkImportRequest) Reset() {
-	*x = EndBulkImportRequest{}
-	mi := &file_gqldb_proto_msgTypes[66]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *EndBulkImportRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*EndBulkImportRequest) ProtoMessage() {}
-
-func (x *EndBulkImportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[66]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use EndBulkImportRequest.ProtoReflect.Descriptor instead.
-func (*EndBulkImportRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{66}
-}
-
-func (x *EndBulkImportRequest) GetSessionId() string {
-	if x != nil {
-		return x.SessionId
-	}
-	return ""
-}
-
-type EndBulkImportResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	TotalRecords  int64                  `protobuf:"varint,2,opt,name=total_records,json=totalRecords,proto3" json:"total_records,omitempty"`
-	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *EndBulkImportResponse) Reset() {
-	*x = EndBulkImportResponse{}
-	mi := &file_gqldb_proto_msgTypes[67]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *EndBulkImportResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*EndBulkImportResponse) ProtoMessage() {}
-
-func (x *EndBulkImportResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[67]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use EndBulkImportResponse.ProtoReflect.Descriptor instead.
-func (*EndBulkImportResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{67}
-}
-
-func (x *EndBulkImportResponse) GetSuccess() bool {
-	if x != nil {
-		return x.Success
-	}
-	return false
-}
-
-func (x *EndBulkImportResponse) GetTotalRecords() int64 {
-	if x != nil {
-		return x.TotalRecords
-	}
-	return 0
-}
-
-func (x *EndBulkImportResponse) GetMessage() string {
-	if x != nil {
-		return x.Message
-	}
-	return ""
-}
-
-type AbortBulkImportRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AbortBulkImportRequest) Reset() {
-	*x = AbortBulkImportRequest{}
-	mi := &file_gqldb_proto_msgTypes[68]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AbortBulkImportRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AbortBulkImportRequest) ProtoMessage() {}
-
-func (x *AbortBulkImportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[68]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AbortBulkImportRequest.ProtoReflect.Descriptor instead.
-func (*AbortBulkImportRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{68}
-}
-
-func (x *AbortBulkImportRequest) GetSessionId() string {
-	if x != nil {
-		return x.SessionId
-	}
-	return ""
-}
-
-type AbortBulkImportResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AbortBulkImportResponse) Reset() {
-	*x = AbortBulkImportResponse{}
-	mi := &file_gqldb_proto_msgTypes[69]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AbortBulkImportResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AbortBulkImportResponse) ProtoMessage() {}
-
-func (x *AbortBulkImportResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[69]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AbortBulkImportResponse.ProtoReflect.Descriptor instead.
-func (*AbortBulkImportResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{69}
-}
-
-func (x *AbortBulkImportResponse) GetSuccess() bool {
-	if x != nil {
-		return x.Success
-	}
-	return false
-}
-
-func (x *AbortBulkImportResponse) GetMessage() string {
-	if x != nil {
-		return x.Message
-	}
-	return ""
-}
-
-type GetBulkImportStatusRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GetBulkImportStatusRequest) Reset() {
-	*x = GetBulkImportStatusRequest{}
-	mi := &file_gqldb_proto_msgTypes[70]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetBulkImportStatusRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetBulkImportStatusRequest) ProtoMessage() {}
-
-func (x *GetBulkImportStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[70]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetBulkImportStatusRequest.ProtoReflect.Descriptor instead.
-func (*GetBulkImportStatusRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{70}
-}
-
-func (x *GetBulkImportStatusRequest) GetSessionId() string {
-	if x != nil {
-		return x.SessionId
-	}
-	return ""
-}
-
-type GetBulkImportStatusResponse struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	IsActive            bool                   `protobuf:"varint,1,opt,name=is_active,json=isActive,proto3" json:"is_active,omitempty"`
-	GraphName           string                 `protobuf:"bytes,2,opt,name=graph_name,json=graphName,proto3" json:"graph_name,omitempty"`
-	RecordCount         int64                  `protobuf:"varint,3,opt,name=record_count,json=recordCount,proto3" json:"record_count,omitempty"`
-	LastCheckpointCount int64                  `protobuf:"varint,4,opt,name=last_checkpoint_count,json=lastCheckpointCount,proto3" json:"last_checkpoint_count,omitempty"`
-	CreatedAt           int64                  `protobuf:"varint,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`          // Unix timestamp
-	LastActivity        int64                  `protobuf:"varint,6,opt,name=last_activity,json=lastActivity,proto3" json:"last_activity,omitempty"` // Unix timestamp
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
-}
-
-func (x *GetBulkImportStatusResponse) Reset() {
-	*x = GetBulkImportStatusResponse{}
-	mi := &file_gqldb_proto_msgTypes[71]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetBulkImportStatusResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetBulkImportStatusResponse) ProtoMessage() {}
-
-func (x *GetBulkImportStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[71]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetBulkImportStatusResponse.ProtoReflect.Descriptor instead.
-func (*GetBulkImportStatusResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{71}
-}
-
-func (x *GetBulkImportStatusResponse) GetIsActive() bool {
-	if x != nil {
-		return x.IsActive
-	}
-	return false
-}
-
-func (x *GetBulkImportStatusResponse) GetGraphName() string {
-	if x != nil {
-		return x.GraphName
-	}
-	return ""
-}
-
-func (x *GetBulkImportStatusResponse) GetRecordCount() int64 {
-	if x != nil {
-		return x.RecordCount
-	}
-	return 0
-}
-
-func (x *GetBulkImportStatusResponse) GetLastCheckpointCount() int64 {
-	if x != nil {
-		return x.LastCheckpointCount
-	}
-	return 0
-}
-
-func (x *GetBulkImportStatusResponse) GetCreatedAt() int64 {
-	if x != nil {
-		return x.CreatedAt
-	}
-	return 0
-}
-
-func (x *GetBulkImportStatusResponse) GetLastActivity() int64 {
-	if x != nil {
-		return x.LastActivity
+		return x.ComputeCostNs
 	}
 	return 0
 }
@@ -4552,7 +4741,7 @@ type GetSystemMetricsRequest struct {
 
 func (x *GetSystemMetricsRequest) Reset() {
 	*x = GetSystemMetricsRequest{}
-	mi := &file_gqldb_proto_msgTypes[72]
+	mi := &file_gqldb_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4564,7 +4753,7 @@ func (x *GetSystemMetricsRequest) String() string {
 func (*GetSystemMetricsRequest) ProtoMessage() {}
 
 func (x *GetSystemMetricsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[72]
+	mi := &file_gqldb_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4577,23 +4766,27 @@ func (x *GetSystemMetricsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSystemMetricsRequest.ProtoReflect.Descriptor instead.
 func (*GetSystemMetricsRequest) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{72}
+	return file_gqldb_proto_rawDescGZIP(), []int{63}
 }
 
 type GetSystemMetricsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Cpu           *CpuMetrics            `protobuf:"bytes,1,opt,name=cpu,proto3" json:"cpu,omitempty"`
-	Memory        *MemoryMetrics         `protobuf:"bytes,2,opt,name=memory,proto3" json:"memory,omitempty"`
-	DiskIo        *DiskIOMetrics         `protobuf:"bytes,3,opt,name=disk_io,json=diskIo,proto3" json:"disk_io,omitempty"`
-	Storage       *StorageMetrics        `protobuf:"bytes,4,opt,name=storage,proto3" json:"storage,omitempty"`
-	Network       *NetworkMetrics        `protobuf:"bytes,5,opt,name=network,proto3" json:"network,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Cpu     *CpuMetrics            `protobuf:"bytes,1,opt,name=cpu,proto3" json:"cpu,omitempty"`
+	Memory  *MemoryMetrics         `protobuf:"bytes,2,opt,name=memory,proto3" json:"memory,omitempty"`
+	DiskIo  *DiskIOMetrics         `protobuf:"bytes,3,opt,name=disk_io,json=diskIo,proto3" json:"disk_io,omitempty"`
+	Storage *StorageMetrics        `protobuf:"bytes,4,opt,name=storage,proto3" json:"storage,omitempty"`
+	Network *NetworkMetrics        `protobuf:"bytes,5,opt,name=network,proto3" json:"network,omitempty"`
+	// Wall-clock timing. See GqlResponse for the canonical contract.
+	TimeCostNs    int64 `protobuf:"varint,6,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,7,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,8,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetSystemMetricsResponse) Reset() {
 	*x = GetSystemMetricsResponse{}
-	mi := &file_gqldb_proto_msgTypes[73]
+	mi := &file_gqldb_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4605,7 +4798,7 @@ func (x *GetSystemMetricsResponse) String() string {
 func (*GetSystemMetricsResponse) ProtoMessage() {}
 
 func (x *GetSystemMetricsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[73]
+	mi := &file_gqldb_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4618,7 +4811,7 @@ func (x *GetSystemMetricsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSystemMetricsResponse.ProtoReflect.Descriptor instead.
 func (*GetSystemMetricsResponse) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{73}
+	return file_gqldb_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *GetSystemMetricsResponse) GetCpu() *CpuMetrics {
@@ -4656,6 +4849,27 @@ func (x *GetSystemMetricsResponse) GetNetwork() *NetworkMetrics {
 	return nil
 }
 
+func (x *GetSystemMetricsResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *GetSystemMetricsResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *GetSystemMetricsResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
 type CpuMetrics struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	ProcessPercent float64                `protobuf:"fixed64,1,opt,name=process_percent,json=processPercent,proto3" json:"process_percent,omitempty"` // CPU usage of this process (0-100 per core)
@@ -4667,7 +4881,7 @@ type CpuMetrics struct {
 
 func (x *CpuMetrics) Reset() {
 	*x = CpuMetrics{}
-	mi := &file_gqldb_proto_msgTypes[74]
+	mi := &file_gqldb_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4679,7 +4893,7 @@ func (x *CpuMetrics) String() string {
 func (*CpuMetrics) ProtoMessage() {}
 
 func (x *CpuMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[74]
+	mi := &file_gqldb_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4692,7 +4906,7 @@ func (x *CpuMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CpuMetrics.ProtoReflect.Descriptor instead.
 func (*CpuMetrics) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{74}
+	return file_gqldb_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *CpuMetrics) GetProcessPercent() float64 {
@@ -4736,7 +4950,7 @@ type MemoryMetrics struct {
 
 func (x *MemoryMetrics) Reset() {
 	*x = MemoryMetrics{}
-	mi := &file_gqldb_proto_msgTypes[75]
+	mi := &file_gqldb_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4748,7 +4962,7 @@ func (x *MemoryMetrics) String() string {
 func (*MemoryMetrics) ProtoMessage() {}
 
 func (x *MemoryMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[75]
+	mi := &file_gqldb_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4761,7 +4975,7 @@ func (x *MemoryMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemoryMetrics.ProtoReflect.Descriptor instead.
 func (*MemoryMetrics) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{75}
+	return file_gqldb_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *MemoryMetrics) GetProcessRss() uint64 {
@@ -4846,7 +5060,7 @@ type DiskIOMetrics struct {
 
 func (x *DiskIOMetrics) Reset() {
 	*x = DiskIOMetrics{}
-	mi := &file_gqldb_proto_msgTypes[76]
+	mi := &file_gqldb_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4858,7 +5072,7 @@ func (x *DiskIOMetrics) String() string {
 func (*DiskIOMetrics) ProtoMessage() {}
 
 func (x *DiskIOMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[76]
+	mi := &file_gqldb_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4871,7 +5085,7 @@ func (x *DiskIOMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiskIOMetrics.ProtoReflect.Descriptor instead.
 func (*DiskIOMetrics) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{76}
+	return file_gqldb_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *DiskIOMetrics) GetReadBytes() uint64 {
@@ -4915,7 +5129,7 @@ type StorageMetrics struct {
 
 func (x *StorageMetrics) Reset() {
 	*x = StorageMetrics{}
-	mi := &file_gqldb_proto_msgTypes[77]
+	mi := &file_gqldb_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4927,7 +5141,7 @@ func (x *StorageMetrics) String() string {
 func (*StorageMetrics) ProtoMessage() {}
 
 func (x *StorageMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[77]
+	mi := &file_gqldb_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4940,7 +5154,7 @@ func (x *StorageMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StorageMetrics.ProtoReflect.Descriptor instead.
 func (*StorageMetrics) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{77}
+	return file_gqldb_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *StorageMetrics) GetDbPath() string {
@@ -4990,7 +5204,7 @@ type NetworkMetrics struct {
 
 func (x *NetworkMetrics) Reset() {
 	*x = NetworkMetrics{}
-	mi := &file_gqldb_proto_msgTypes[78]
+	mi := &file_gqldb_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5002,7 +5216,7 @@ func (x *NetworkMetrics) String() string {
 func (*NetworkMetrics) ProtoMessage() {}
 
 func (x *NetworkMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_gqldb_proto_msgTypes[78]
+	mi := &file_gqldb_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5015,7 +5229,7 @@ func (x *NetworkMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkMetrics.ProtoReflect.Descriptor instead.
 func (*NetworkMetrics) Descriptor() ([]byte, []int) {
-	return file_gqldb_proto_rawDescGZIP(), []int{78}
+	return file_gqldb_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *NetworkMetrics) GetBytesSent() uint64 {
@@ -5046,6 +5260,718 @@ func (x *NetworkMetrics) GetPacketsRecv() uint64 {
 	return 0
 }
 
+type StartBulkImportRequest struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	GraphName       string                 `protobuf:"bytes,1,opt,name=graph_name,json=graphName,proto3" json:"graph_name,omitempty"`
+	CheckpointEvery int64                  `protobuf:"varint,2,opt,name=checkpoint_every,json=checkpointEvery,proto3" json:"checkpoint_every,omitempty"` // Records between auto-checkpoints (0 = manual only)
+	EstimatedNodes  int64                  `protobuf:"varint,3,opt,name=estimated_nodes,json=estimatedNodes,proto3" json:"estimated_nodes,omitempty"`    // Hint for pre-allocating node ID cache
+	EstimatedEdges  int64                  `protobuf:"varint,4,opt,name=estimated_edges,json=estimatedEdges,proto3" json:"estimated_edges,omitempty"`    // Hint for edge batch sizing
+	MemtableSize    int64                  `protobuf:"varint,5,opt,name=memtable_size,json=memtableSize,proto3" json:"memtable_size,omitempty"`          // Memtable size in bytes before flush (default: 64MB)
+	MaxMemtables    int32                  `protobuf:"varint,6,opt,name=max_memtables,json=maxMemtables,proto3" json:"max_memtables,omitempty"`          // Max immutable memtables before stall (default: 4)
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *StartBulkImportRequest) Reset() {
+	*x = StartBulkImportRequest{}
+	mi := &file_gqldb_proto_msgTypes[70]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StartBulkImportRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StartBulkImportRequest) ProtoMessage() {}
+
+func (x *StartBulkImportRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gqldb_proto_msgTypes[70]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StartBulkImportRequest.ProtoReflect.Descriptor instead.
+func (*StartBulkImportRequest) Descriptor() ([]byte, []int) {
+	return file_gqldb_proto_rawDescGZIP(), []int{70}
+}
+
+func (x *StartBulkImportRequest) GetGraphName() string {
+	if x != nil {
+		return x.GraphName
+	}
+	return ""
+}
+
+func (x *StartBulkImportRequest) GetCheckpointEvery() int64 {
+	if x != nil {
+		return x.CheckpointEvery
+	}
+	return 0
+}
+
+func (x *StartBulkImportRequest) GetEstimatedNodes() int64 {
+	if x != nil {
+		return x.EstimatedNodes
+	}
+	return 0
+}
+
+func (x *StartBulkImportRequest) GetEstimatedEdges() int64 {
+	if x != nil {
+		return x.EstimatedEdges
+	}
+	return 0
+}
+
+func (x *StartBulkImportRequest) GetMemtableSize() int64 {
+	if x != nil {
+		return x.MemtableSize
+	}
+	return 0
+}
+
+func (x *StartBulkImportRequest) GetMaxMemtables() int32 {
+	if x != nil {
+		return x.MaxMemtables
+	}
+	return 0
+}
+
+type StartBulkImportResponse struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Success   bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	SessionId string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"` // UUID for the session
+	Message   string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
+	// Wall-clock timing. See GqlResponse for the canonical contract.
+	TimeCostNs    int64 `protobuf:"varint,4,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,5,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,6,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StartBulkImportResponse) Reset() {
+	*x = StartBulkImportResponse{}
+	mi := &file_gqldb_proto_msgTypes[71]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StartBulkImportResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StartBulkImportResponse) ProtoMessage() {}
+
+func (x *StartBulkImportResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gqldb_proto_msgTypes[71]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StartBulkImportResponse.ProtoReflect.Descriptor instead.
+func (*StartBulkImportResponse) Descriptor() ([]byte, []int) {
+	return file_gqldb_proto_rawDescGZIP(), []int{71}
+}
+
+func (x *StartBulkImportResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *StartBulkImportResponse) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *StartBulkImportResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *StartBulkImportResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *StartBulkImportResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *StartBulkImportResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
+type CheckpointRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckpointRequest) Reset() {
+	*x = CheckpointRequest{}
+	mi := &file_gqldb_proto_msgTypes[72]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckpointRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckpointRequest) ProtoMessage() {}
+
+func (x *CheckpointRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gqldb_proto_msgTypes[72]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckpointRequest.ProtoReflect.Descriptor instead.
+func (*CheckpointRequest) Descriptor() ([]byte, []int) {
+	return file_gqldb_proto_rawDescGZIP(), []int{72}
+}
+
+func (x *CheckpointRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+type CheckpointResponse struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	Success             bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	RecordCount         int64                  `protobuf:"varint,2,opt,name=record_count,json=recordCount,proto3" json:"record_count,omitempty"`
+	LastCheckpointCount int64                  `protobuf:"varint,3,opt,name=last_checkpoint_count,json=lastCheckpointCount,proto3" json:"last_checkpoint_count,omitempty"`
+	Message             string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
+	// Wall-clock timing. See GqlResponse for the canonical contract.
+	// Checkpoint flushes to disk — TimeCost is operationally meaningful.
+	TimeCostNs    int64 `protobuf:"varint,5,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,6,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,7,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckpointResponse) Reset() {
+	*x = CheckpointResponse{}
+	mi := &file_gqldb_proto_msgTypes[73]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckpointResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckpointResponse) ProtoMessage() {}
+
+func (x *CheckpointResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gqldb_proto_msgTypes[73]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckpointResponse.ProtoReflect.Descriptor instead.
+func (*CheckpointResponse) Descriptor() ([]byte, []int) {
+	return file_gqldb_proto_rawDescGZIP(), []int{73}
+}
+
+func (x *CheckpointResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *CheckpointResponse) GetRecordCount() int64 {
+	if x != nil {
+		return x.RecordCount
+	}
+	return 0
+}
+
+func (x *CheckpointResponse) GetLastCheckpointCount() int64 {
+	if x != nil {
+		return x.LastCheckpointCount
+	}
+	return 0
+}
+
+func (x *CheckpointResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *CheckpointResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *CheckpointResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *CheckpointResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
+type EndBulkImportRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EndBulkImportRequest) Reset() {
+	*x = EndBulkImportRequest{}
+	mi := &file_gqldb_proto_msgTypes[74]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EndBulkImportRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EndBulkImportRequest) ProtoMessage() {}
+
+func (x *EndBulkImportRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gqldb_proto_msgTypes[74]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EndBulkImportRequest.ProtoReflect.Descriptor instead.
+func (*EndBulkImportRequest) Descriptor() ([]byte, []int) {
+	return file_gqldb_proto_rawDescGZIP(), []int{74}
+}
+
+func (x *EndBulkImportRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+type EndBulkImportResponse struct {
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Success      bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	TotalRecords int64                  `protobuf:"varint,2,opt,name=total_records,json=totalRecords,proto3" json:"total_records,omitempty"`
+	Message      string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
+	// Wall-clock timing. See GqlResponse for the canonical contract.
+	// EndBulkImport does a final flush — TimeCost is operationally
+	// meaningful for large bulk loads.
+	TimeCostNs    int64 `protobuf:"varint,4,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,5,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,6,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EndBulkImportResponse) Reset() {
+	*x = EndBulkImportResponse{}
+	mi := &file_gqldb_proto_msgTypes[75]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EndBulkImportResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EndBulkImportResponse) ProtoMessage() {}
+
+func (x *EndBulkImportResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gqldb_proto_msgTypes[75]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EndBulkImportResponse.ProtoReflect.Descriptor instead.
+func (*EndBulkImportResponse) Descriptor() ([]byte, []int) {
+	return file_gqldb_proto_rawDescGZIP(), []int{75}
+}
+
+func (x *EndBulkImportResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *EndBulkImportResponse) GetTotalRecords() int64 {
+	if x != nil {
+		return x.TotalRecords
+	}
+	return 0
+}
+
+func (x *EndBulkImportResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *EndBulkImportResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *EndBulkImportResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *EndBulkImportResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
+type AbortBulkImportRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AbortBulkImportRequest) Reset() {
+	*x = AbortBulkImportRequest{}
+	mi := &file_gqldb_proto_msgTypes[76]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AbortBulkImportRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AbortBulkImportRequest) ProtoMessage() {}
+
+func (x *AbortBulkImportRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gqldb_proto_msgTypes[76]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AbortBulkImportRequest.ProtoReflect.Descriptor instead.
+func (*AbortBulkImportRequest) Descriptor() ([]byte, []int) {
+	return file_gqldb_proto_rawDescGZIP(), []int{76}
+}
+
+func (x *AbortBulkImportRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+type AbortBulkImportResponse struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Success bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Message string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	// Wall-clock timing. See GqlResponse for the canonical contract.
+	TimeCostNs    int64 `protobuf:"varint,3,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,4,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,5,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AbortBulkImportResponse) Reset() {
+	*x = AbortBulkImportResponse{}
+	mi := &file_gqldb_proto_msgTypes[77]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AbortBulkImportResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AbortBulkImportResponse) ProtoMessage() {}
+
+func (x *AbortBulkImportResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gqldb_proto_msgTypes[77]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AbortBulkImportResponse.ProtoReflect.Descriptor instead.
+func (*AbortBulkImportResponse) Descriptor() ([]byte, []int) {
+	return file_gqldb_proto_rawDescGZIP(), []int{77}
+}
+
+func (x *AbortBulkImportResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *AbortBulkImportResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *AbortBulkImportResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *AbortBulkImportResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *AbortBulkImportResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
+type GetBulkImportStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetBulkImportStatusRequest) Reset() {
+	*x = GetBulkImportStatusRequest{}
+	mi := &file_gqldb_proto_msgTypes[78]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBulkImportStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBulkImportStatusRequest) ProtoMessage() {}
+
+func (x *GetBulkImportStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_gqldb_proto_msgTypes[78]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBulkImportStatusRequest.ProtoReflect.Descriptor instead.
+func (*GetBulkImportStatusRequest) Descriptor() ([]byte, []int) {
+	return file_gqldb_proto_rawDescGZIP(), []int{78}
+}
+
+func (x *GetBulkImportStatusRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+type GetBulkImportStatusResponse struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	IsActive            bool                   `protobuf:"varint,1,opt,name=is_active,json=isActive,proto3" json:"is_active,omitempty"`
+	GraphName           string                 `protobuf:"bytes,2,opt,name=graph_name,json=graphName,proto3" json:"graph_name,omitempty"`
+	RecordCount         int64                  `protobuf:"varint,3,opt,name=record_count,json=recordCount,proto3" json:"record_count,omitempty"`
+	LastCheckpointCount int64                  `protobuf:"varint,4,opt,name=last_checkpoint_count,json=lastCheckpointCount,proto3" json:"last_checkpoint_count,omitempty"`
+	CreatedAt           int64                  `protobuf:"varint,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`          // Unix timestamp
+	LastActivity        int64                  `protobuf:"varint,6,opt,name=last_activity,json=lastActivity,proto3" json:"last_activity,omitempty"` // Unix timestamp
+	// Wall-clock timing. See GqlResponse for the canonical contract.
+	TimeCostNs    int64 `protobuf:"varint,7,opt,name=time_cost_ns,json=timeCostNs,proto3" json:"time_cost_ns,omitempty"`
+	DiskCostNs    int64 `protobuf:"varint,8,opt,name=disk_cost_ns,json=diskCostNs,proto3" json:"disk_cost_ns,omitempty"`
+	ComputeCostNs int64 `protobuf:"varint,9,opt,name=compute_cost_ns,json=computeCostNs,proto3" json:"compute_cost_ns,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetBulkImportStatusResponse) Reset() {
+	*x = GetBulkImportStatusResponse{}
+	mi := &file_gqldb_proto_msgTypes[79]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBulkImportStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBulkImportStatusResponse) ProtoMessage() {}
+
+func (x *GetBulkImportStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_gqldb_proto_msgTypes[79]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBulkImportStatusResponse.ProtoReflect.Descriptor instead.
+func (*GetBulkImportStatusResponse) Descriptor() ([]byte, []int) {
+	return file_gqldb_proto_rawDescGZIP(), []int{79}
+}
+
+func (x *GetBulkImportStatusResponse) GetIsActive() bool {
+	if x != nil {
+		return x.IsActive
+	}
+	return false
+}
+
+func (x *GetBulkImportStatusResponse) GetGraphName() string {
+	if x != nil {
+		return x.GraphName
+	}
+	return ""
+}
+
+func (x *GetBulkImportStatusResponse) GetRecordCount() int64 {
+	if x != nil {
+		return x.RecordCount
+	}
+	return 0
+}
+
+func (x *GetBulkImportStatusResponse) GetLastCheckpointCount() int64 {
+	if x != nil {
+		return x.LastCheckpointCount
+	}
+	return 0
+}
+
+func (x *GetBulkImportStatusResponse) GetCreatedAt() int64 {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return 0
+}
+
+func (x *GetBulkImportStatusResponse) GetLastActivity() int64 {
+	if x != nil {
+		return x.LastActivity
+	}
+	return 0
+}
+
+func (x *GetBulkImportStatusResponse) GetTimeCostNs() int64 {
+	if x != nil {
+		return x.TimeCostNs
+	}
+	return 0
+}
+
+func (x *GetBulkImportStatusResponse) GetDiskCostNs() int64 {
+	if x != nil {
+		return x.DiskCostNs
+	}
+	return 0
+}
+
+func (x *GetBulkImportStatusResponse) GetComputeCostNs() int64 {
+	if x != nil {
+		return x.ComputeCostNs
+	}
+	return 0
+}
+
 var File_gqldb_proto protoreflect.FileDescriptor
 
 const file_gqldb_proto_rawDesc = "" +
@@ -5064,7 +5990,7 @@ const file_gqldb_proto_rawDesc = "" +
 	"\fLoginRequest\x12\x1a\n" +
 	"\busername\x18\x01 \x01(\tR\busername\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\x12#\n" +
-	"\rdefault_graph\x18\x03 \x01(\tR\fdefaultGraph\"\x9b\x02\n" +
+	"\rdefault_graph\x18\x03 \x01(\tR\fdefaultGraph\"\x87\x03\n" +
 	"\rLoginResponse\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\x04R\tsessionId\x12%\n" +
@@ -5077,10 +6003,20 @@ const file_gqldb_proto_rawDesc = "" +
 	"cluster_id\x18\v \x01(\tR\tclusterId\x12'\n" +
 	"\x0fpartition_count\x18\f \x01(\x05R\x0epartitionCount\x12\"\n" +
 	"\fcapabilities\x18\x14 \x03(\tR\fcapabilities\x12#\n" +
-	"\rcurrent_graph\x18\x15 \x01(\tR\fcurrentGraph\"\x0f\n" +
-	"\rLogoutRequest\"*\n" +
+	"\rcurrent_graph\x18\x15 \x01(\tR\fcurrentGraph\x12 \n" +
+	"\ftime_cost_ns\x18\x16 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x17 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x18 \x01(\x03R\rcomputeCostNs\"\x0f\n" +
+	"\rLogoutRequest\"\x96\x01\n" +
 	"\x0eLogoutResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\"\r\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12 \n" +
+	"\ftime_cost_ns\x18\x02 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x03 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x04 \x01(\x03R\rcomputeCostNs\"\r\n" +
 	"\vPingRequest\"-\n" +
 	"\fPingResponse\x12\x1d\n" +
 	"\n" +
@@ -5098,7 +6034,14 @@ const file_gqldb_proto_rawDesc = "" +
 	"\x0etransaction_id\x18\x05 \x01(\x04R\rtransactionId\x12\x18\n" +
 	"\atimeout\x18\x06 \x01(\x05R\atimeout\x12\x1b\n" +
 	"\tread_only\x18\a \x01(\bR\breadOnly\x12(\n" +
-	"\x10max_path_results\x18\b \x01(\x03R\x0emaxPathResults\"\xd1\x02\n" +
+	"\x10max_path_results\x18\b \x01(\x03R\x0emaxPathResults\"\xdc\x01\n" +
+	"\bDmlStats\x12%\n" +
+	"\x0einserted_nodes\x18\x01 \x01(\x03R\rinsertedNodes\x12%\n" +
+	"\x0einserted_edges\x18\x02 \x01(\x03R\rinsertedEdges\x12#\n" +
+	"\rdeleted_nodes\x18\x03 \x01(\x03R\fdeletedNodes\x12#\n" +
+	"\rdeleted_edges\x18\x04 \x01(\x03R\fdeletedEdges\x12\x1b\n" +
+	"\tset_nodes\x18\x05 \x01(\x03R\bsetNodes\x12\x1b\n" +
+	"\tset_edges\x18\x06 \x01(\x03R\bsetEdges\"\xff\x02\n" +
 	"\vGqlResponse\x12\x18\n" +
 	"\acolumns\x18\x01 \x03(\tR\acolumns\x12\x1e\n" +
 	"\x04rows\x18\x02 \x03(\v2\n" +
@@ -5113,11 +6056,22 @@ const file_gqldb_proto_rawDesc = "" +
 	"\fdisk_cost_ns\x18\t \x01(\x03R\n" +
 	"diskCostNs\x12&\n" +
 	"\x0fcompute_cost_ns\x18\n" +
-	" \x01(\x03R\rcomputeCostNs\"%\n" +
+	" \x01(\x03R\rcomputeCostNs\x12,\n" +
+	"\tdml_stats\x18\v \x01(\v2\x0f.gqldb.DmlStatsR\bdmlStats\"\x91\x01\n" +
 	"\x0fExplainResponse\x12\x12\n" +
-	"\x04plan\x18\x01 \x01(\tR\x04plan\"+\n" +
+	"\x04plan\x18\x01 \x01(\tR\x04plan\x12 \n" +
+	"\ftime_cost_ns\x18\x02 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x03 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x04 \x01(\x03R\rcomputeCostNs\"\x97\x01\n" +
 	"\x0fProfileResponse\x12\x18\n" +
-	"\aprofile\x18\x01 \x01(\tR\aprofile\"\xc5\x01\n" +
+	"\aprofile\x18\x01 \x01(\tR\aprofile\x12 \n" +
+	"\ftime_cost_ns\x18\x02 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x03 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x04 \x01(\x03R\rcomputeCostNs\"\xc5\x01\n" +
 	"\bNodeData\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06labels\x18\x02 \x03(\tR\x06labels\x12?\n" +
@@ -5150,26 +6104,36 @@ const file_gqldb_proto_rawDesc = "" +
 	"graph_name\x18\x01 \x01(\tR\tgraphName\x12%\n" +
 	"\x05nodes\x18\x02 \x03(\v2\x0f.gqldb.NodeDataR\x05nodes\x127\n" +
 	"\aoptions\x18\x03 \x01(\v2\x1d.gqldb.BulkCreateNodesOptionsR\aoptions\x123\n" +
-	"\x16bulk_import_session_id\x18\x04 \x01(\tR\x13bulkImportSessionId\"\x83\x01\n" +
+	"\x16bulk_import_session_id\x18\x04 \x01(\tR\x13bulkImportSessionId\"\xef\x01\n" +
 	"\x13InsertNodesResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x19\n" +
 	"\bnode_ids\x18\x02 \x03(\tR\anodeIds\x12\x1d\n" +
 	"\n" +
 	"node_count\x18\x03 \x01(\x03R\tnodeCount\x12\x18\n" +
-	"\amessage\x18\x04 \x01(\tR\amessage\"\xc8\x01\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\x12 \n" +
+	"\ftime_cost_ns\x18\x05 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x06 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\a \x01(\x03R\rcomputeCostNs\"\xc8\x01\n" +
 	"\x12InsertEdgesRequest\x12\x1d\n" +
 	"\n" +
 	"graph_name\x18\x01 \x01(\tR\tgraphName\x12%\n" +
 	"\x05edges\x18\x02 \x03(\v2\x0f.gqldb.EdgeDataR\x05edges\x127\n" +
 	"\aoptions\x18\x03 \x01(\v2\x1d.gqldb.BulkCreateEdgesOptionsR\aoptions\x123\n" +
-	"\x16bulk_import_session_id\x18\x04 \x01(\tR\x13bulkImportSessionId\"\xa8\x01\n" +
+	"\x16bulk_import_session_id\x18\x04 \x01(\tR\x13bulkImportSessionId\"\x94\x02\n" +
 	"\x13InsertEdgesResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x19\n" +
 	"\bedge_ids\x18\x02 \x03(\tR\aedgeIds\x12\x1d\n" +
 	"\n" +
 	"edge_count\x18\x03 \x01(\x03R\tedgeCount\x12\x18\n" +
 	"\amessage\x18\x04 \x01(\tR\amessage\x12#\n" +
-	"\rskipped_count\x18\x05 \x01(\x03R\fskippedCount\"\x80\x02\n" +
+	"\rskipped_count\x18\x05 \x01(\x03R\fskippedCount\x12 \n" +
+	"\ftime_cost_ns\x18\x06 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\a \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\b \x01(\x03R\rcomputeCostNs\"\x80\x02\n" +
 	"\rExportRequest\x12\x1d\n" +
 	"\n" +
 	"graph_name\x18\x01 \x01(\tR\tgraphName\x12\x1d\n" +
@@ -5185,41 +6149,71 @@ const file_gqldb_proto_rawDesc = "" +
 	"\x0eExportResponse\x12\x12\n" +
 	"\x04data\x18\x01 \x01(\fR\x04data\x12\x19\n" +
 	"\bis_final\x18\x02 \x01(\bR\aisFinal\x12(\n" +
-	"\x05stats\x18\x03 \x01(\v2\x12.gqldb.ExportStatsR\x05stats\"\xa1\x01\n" +
+	"\x05stats\x18\x03 \x01(\v2\x12.gqldb.ExportStatsR\x05stats\"\x8d\x02\n" +
 	"\vExportStats\x12%\n" +
 	"\x0enodes_exported\x18\x01 \x01(\x03R\rnodesExported\x12%\n" +
 	"\x0eedges_exported\x18\x02 \x01(\x03R\redgesExported\x12#\n" +
 	"\rbytes_written\x18\x03 \x01(\x03R\fbytesWritten\x12\x1f\n" +
 	"\vduration_ms\x18\x04 \x01(\x03R\n" +
-	"durationMs\"{\n" +
+	"durationMs\x12 \n" +
+	"\ftime_cost_ns\x18\x05 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x06 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\a \x01(\x03R\rcomputeCostNs\"{\n" +
 	"\x12CreateGraphRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12/\n" +
 	"\n" +
 	"graph_type\x18\x02 \x01(\x0e2\x10.gqldb.GraphTypeR\tgraphType\x12 \n" +
-	"\vdescription\x18\x03 \x01(\tR\vdescription\"I\n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\"\xb5\x01\n" +
 	"\x13CreateGraphResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"C\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12 \n" +
+	"\ftime_cost_ns\x18\x03 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x04 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x05 \x01(\x03R\rcomputeCostNs\"C\n" +
 	"\x10DropGraphRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1b\n" +
-	"\tif_exists\x18\x02 \x01(\bR\bifExists\"G\n" +
+	"\tif_exists\x18\x02 \x01(\bR\bifExists\"\xb3\x01\n" +
 	"\x11DropGraphResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"H\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12 \n" +
+	"\ftime_cost_ns\x18\x03 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x04 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x05 \x01(\x03R\rcomputeCostNs\"H\n" +
 	"\x0fUseGraphRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\n" +
-	"session_id\x18\x02 \x01(\x04B\x02\x18\x01R\tsessionId\"F\n" +
+	"session_id\x18\x02 \x01(\x04B\x02\x18\x01R\tsessionId\"\xb2\x01\n" +
 	"\x10UseGraphResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\x13\n" +
-	"\x11ListGraphsRequest\">\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12 \n" +
+	"\ftime_cost_ns\x18\x03 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x04 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x05 \x01(\x03R\rcomputeCostNs\"\x13\n" +
+	"\x11ListGraphsRequest\"\xaa\x01\n" +
 	"\x12ListGraphsResponse\x12(\n" +
-	"\x06graphs\x18\x01 \x03(\v2\x10.gqldb.GraphInfoR\x06graphs\")\n" +
+	"\x06graphs\x18\x01 \x03(\v2\x10.gqldb.GraphInfoR\x06graphs\x12 \n" +
+	"\ftime_cost_ns\x18\x02 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x03 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x04 \x01(\x03R\rcomputeCostNs\")\n" +
 	"\x13GetGraphInfoRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"<\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xa8\x01\n" +
 	"\x14GetGraphInfoResponse\x12$\n" +
-	"\x04info\x18\x01 \x01(\v2\x10.gqldb.GraphInfoR\x04info\"\xb0\x01\n" +
+	"\x04info\x18\x01 \x01(\v2\x10.gqldb.GraphInfoR\x04info\x12 \n" +
+	"\ftime_cost_ns\x18\x02 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x03 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x04 \x01(\x03R\rcomputeCostNs\"\xb0\x01\n" +
 	"\tGraphInfo\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12/\n" +
 	"\n" +
@@ -5235,30 +6229,50 @@ const file_gqldb_proto_rawDesc = "" +
 	"\n" +
 	"graph_name\x18\x02 \x01(\tR\tgraphName\x12\x1b\n" +
 	"\tread_only\x18\x03 \x01(\bR\breadOnly\x12\x18\n" +
-	"\atimeout\x18\x04 \x01(\x05R\atimeout\"P\n" +
+	"\atimeout\x18\x04 \x01(\x05R\atimeout\"\xbc\x01\n" +
 	"\rBeginResponse\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x04R\rtransactionId\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"Y\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12 \n" +
+	"\ftime_cost_ns\x18\x03 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x04 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x05 \x01(\x03R\rcomputeCostNs\"Y\n" +
 	"\rCommitRequest\x12!\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\x04B\x02\x18\x01R\tsessionId\x12%\n" +
-	"\x0etransaction_id\x18\x02 \x01(\x04R\rtransactionId\"D\n" +
+	"\x0etransaction_id\x18\x02 \x01(\x04R\rtransactionId\"\xb0\x01\n" +
 	"\x0eCommitResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"[\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12 \n" +
+	"\ftime_cost_ns\x18\x03 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x04 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x05 \x01(\x03R\rcomputeCostNs\"[\n" +
 	"\x0fRollbackRequest\x12!\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\x04B\x02\x18\x01R\tsessionId\x12%\n" +
-	"\x0etransaction_id\x18\x02 \x01(\x04R\rtransactionId\"F\n" +
+	"\x0etransaction_id\x18\x02 \x01(\x04R\rtransactionId\"\xb2\x01\n" +
 	"\x10RollbackResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"g\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12 \n" +
+	"\ftime_cost_ns\x18\x03 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x04 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x05 \x01(\x03R\rcomputeCostNs\"g\n" +
 	"\x17ListTransactionsRequest\x12!\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\x04B\x02\x18\x01R\tsessionId\x12)\n" +
-	"\x10all_transactions\x18\x02 \x01(\bR\x0fallTransactions\"V\n" +
+	"\x10all_transactions\x18\x02 \x01(\bR\x0fallTransactions\"\xc2\x01\n" +
 	"\x18ListTransactionsResponse\x12:\n" +
-	"\ftransactions\x18\x01 \x03(\v2\x16.gqldb.TransactionInfoR\ftransactions\"\xf9\x01\n" +
+	"\ftransactions\x18\x01 \x03(\v2\x16.gqldb.TransactionInfoR\ftransactions\x12 \n" +
+	"\ftime_cost_ns\x18\x02 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x03 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x04 \x01(\x03R\rcomputeCostNs\"\xf9\x01\n" +
 	"\x0fTransactionInfo\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x04R\rtransactionId\x12\x1d\n" +
 	"\n" +
@@ -5276,17 +6290,27 @@ const file_gqldb_proto_rawDesc = "" +
 	"\x13HealthCheckResponse\x12+\n" +
 	"\x06status\x18\x01 \x01(\x0e2\x13.gqldb.HealthStatusR\x06status\"+\n" +
 	"\x13WarmupParserRequest\x12\x14\n" +
-	"\x05count\x18\x01 \x01(\x05R\x05count\"J\n" +
+	"\x05count\x18\x01 \x01(\x05R\x05count\"\xb6\x01\n" +
 	"\x14WarmupParserResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"G\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12 \n" +
+	"\ftime_cost_ns\x18\x03 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x04 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x05 \x01(\x03R\rcomputeCostNs\"G\n" +
 	"\x14GetCacheStatsRequest\x12/\n" +
 	"\n" +
-	"cache_type\x18\x01 \x01(\x0e2\x10.gqldb.CacheTypeR\tcacheType\"}\n" +
+	"cache_type\x18\x01 \x01(\x0e2\x10.gqldb.CacheTypeR\tcacheType\"\xe9\x01\n" +
 	"\x12CacheStatsResponse\x121\n" +
 	"\tast_stats\x18\x01 \x01(\v2\x14.gqldb.ASTCacheStatsR\bastStats\x124\n" +
 	"\n" +
-	"plan_stats\x18\x02 \x01(\v2\x15.gqldb.PlanCacheStatsR\tplanStats\"\x8e\x01\n" +
+	"plan_stats\x18\x02 \x01(\v2\x15.gqldb.PlanCacheStatsR\tplanStats\x12 \n" +
+	"\ftime_cost_ns\x18\x03 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x04 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x05 \x01(\x03R\rcomputeCostNs\"\x8e\x01\n" +
 	"\rASTCacheStats\x12\x12\n" +
 	"\x04hits\x18\x01 \x01(\x04R\x04hits\x12\x16\n" +
 	"\x06misses\x18\x02 \x01(\x04R\x06misses\x12\x1c\n" +
@@ -5301,20 +6325,30 @@ const file_gqldb_proto_rawDesc = "" +
 	"\bhit_rate\x18\x05 \x01(\x01R\ahitRate\"D\n" +
 	"\x11ClearCacheRequest\x12/\n" +
 	"\n" +
-	"cache_type\x18\x01 \x01(\x0e2\x10.gqldb.CacheTypeR\tcacheType\"H\n" +
+	"cache_type\x18\x01 \x01(\x0e2\x10.gqldb.CacheTypeR\tcacheType\"\xb4\x01\n" +
 	"\x12ClearCacheResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"5\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12 \n" +
+	"\ftime_cost_ns\x18\x03 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x04 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x05 \x01(\x03R\rcomputeCostNs\"5\n" +
 	"\x14GetStatisticsRequest\x12\x1d\n" +
 	"\n" +
-	"graph_name\x18\x01 \x01(\tR\tgraphName\"\x8a\x03\n" +
+	"graph_name\x18\x01 \x01(\tR\tgraphName\"\xf6\x03\n" +
 	"\x15GetStatisticsResponse\x12\x1d\n" +
 	"\n" +
 	"node_count\x18\x01 \x01(\x04R\tnodeCount\x12\x1d\n" +
 	"\n" +
 	"edge_count\x18\x02 \x01(\x04R\tedgeCount\x12P\n" +
 	"\flabel_counts\x18\x03 \x03(\v2-.gqldb.GetStatisticsResponse.LabelCountsEntryR\vlabelCounts\x12]\n" +
-	"\x11edge_label_counts\x18\x04 \x03(\v21.gqldb.GetStatisticsResponse.EdgeLabelCountsEntryR\x0fedgeLabelCounts\x1a>\n" +
+	"\x11edge_label_counts\x18\x04 \x03(\v21.gqldb.GetStatisticsResponse.EdgeLabelCountsEntryR\x0fedgeLabelCounts\x12 \n" +
+	"\ftime_cost_ns\x18\x05 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x06 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\a \x01(\x03R\rcomputeCostNs\x1a>\n" +
 	"\x10LabelCountsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x04R\x05value:\x028\x01\x1aB\n" +
@@ -5322,74 +6356,48 @@ const file_gqldb_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x04R\x05value:\x028\x01\">\n" +
 	" InvalidatePermissionCacheRequest\x12\x1a\n" +
-	"\busername\x18\x01 \x01(\tR\busername\"=\n" +
+	"\busername\x18\x01 \x01(\tR\busername\"\xa9\x01\n" +
 	"!InvalidatePermissionCacheResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\"\x10\n" +
-	"\x0eCompactRequest\"E\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12 \n" +
+	"\ftime_cost_ns\x18\x02 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x03 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x04 \x01(\x03R\rcomputeCostNs\"\x10\n" +
+	"\x0eCompactRequest\"\xb1\x01\n" +
 	"\x0fCompactResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"]\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12 \n" +
+	"\ftime_cost_ns\x18\x03 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x04 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x05 \x01(\x03R\rcomputeCostNs\"]\n" +
 	"\x1dWaitForComputeTopologyRequest\x12\x1d\n" +
 	"\n" +
 	"graph_name\x18\x01 \x01(\tR\tgraphName\x12\x1d\n" +
 	"\n" +
-	"timeout_ms\x18\x02 \x01(\x03R\ttimeoutMs\"P\n" +
+	"timeout_ms\x18\x02 \x01(\x03R\ttimeoutMs\"\xbc\x01\n" +
 	"\x1eWaitForComputeTopologyResponse\x12\x14\n" +
 	"\x05ready\x18\x01 \x01(\bR\x05ready\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\xfe\x01\n" +
-	"\x16StartBulkImportRequest\x12\x1d\n" +
-	"\n" +
-	"graph_name\x18\x01 \x01(\tR\tgraphName\x12)\n" +
-	"\x10checkpoint_every\x18\x02 \x01(\x03R\x0fcheckpointEvery\x12'\n" +
-	"\x0festimated_nodes\x18\x03 \x01(\x03R\x0eestimatedNodes\x12'\n" +
-	"\x0festimated_edges\x18\x04 \x01(\x03R\x0eestimatedEdges\x12#\n" +
-	"\rmemtable_size\x18\x05 \x01(\x03R\fmemtableSize\x12#\n" +
-	"\rmax_memtables\x18\x06 \x01(\x05R\fmaxMemtables\"l\n" +
-	"\x17StartBulkImportResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x1d\n" +
-	"\n" +
-	"session_id\x18\x02 \x01(\tR\tsessionId\x12\x18\n" +
-	"\amessage\x18\x03 \x01(\tR\amessage\"2\n" +
-	"\x11CheckpointRequest\x12\x1d\n" +
-	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\"\x9f\x01\n" +
-	"\x12CheckpointResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\x12!\n" +
-	"\frecord_count\x18\x02 \x01(\x03R\vrecordCount\x122\n" +
-	"\x15last_checkpoint_count\x18\x03 \x01(\x03R\x13lastCheckpointCount\x12\x18\n" +
-	"\amessage\x18\x04 \x01(\tR\amessage\"5\n" +
-	"\x14EndBulkImportRequest\x12\x1d\n" +
-	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\"p\n" +
-	"\x15EndBulkImportResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\x12#\n" +
-	"\rtotal_records\x18\x02 \x01(\x03R\ftotalRecords\x12\x18\n" +
-	"\amessage\x18\x03 \x01(\tR\amessage\"7\n" +
-	"\x16AbortBulkImportRequest\x12\x1d\n" +
-	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\"M\n" +
-	"\x17AbortBulkImportResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\";\n" +
-	"\x1aGetBulkImportStatusRequest\x12\x1d\n" +
-	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\"\xf4\x01\n" +
-	"\x1bGetBulkImportStatusResponse\x12\x1b\n" +
-	"\tis_active\x18\x01 \x01(\bR\bisActive\x12\x1d\n" +
-	"\n" +
-	"graph_name\x18\x02 \x01(\tR\tgraphName\x12!\n" +
-	"\frecord_count\x18\x03 \x01(\x03R\vrecordCount\x122\n" +
-	"\x15last_checkpoint_count\x18\x04 \x01(\x03R\x13lastCheckpointCount\x12\x1d\n" +
-	"\n" +
-	"created_at\x18\x05 \x01(\x03R\tcreatedAt\x12#\n" +
-	"\rlast_activity\x18\x06 \x01(\x03R\flastActivity\"\x19\n" +
-	"\x17GetSystemMetricsRequest\"\xfe\x01\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12 \n" +
+	"\ftime_cost_ns\x18\x03 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x04 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x05 \x01(\x03R\rcomputeCostNs\"\x19\n" +
+	"\x17GetSystemMetricsRequest\"\xea\x02\n" +
 	"\x18GetSystemMetricsResponse\x12#\n" +
 	"\x03cpu\x18\x01 \x01(\v2\x11.gqldb.CpuMetricsR\x03cpu\x12,\n" +
 	"\x06memory\x18\x02 \x01(\v2\x14.gqldb.MemoryMetricsR\x06memory\x12-\n" +
 	"\adisk_io\x18\x03 \x01(\v2\x14.gqldb.DiskIOMetricsR\x06diskIo\x12/\n" +
 	"\astorage\x18\x04 \x01(\v2\x15.gqldb.StorageMetricsR\astorage\x12/\n" +
-	"\anetwork\x18\x05 \x01(\v2\x15.gqldb.NetworkMetricsR\anetwork\"y\n" +
+	"\anetwork\x18\x05 \x01(\v2\x15.gqldb.NetworkMetricsR\anetwork\x12 \n" +
+	"\ftime_cost_ns\x18\x06 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\a \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\b \x01(\x03R\rcomputeCostNs\"y\n" +
 	"\n" +
 	"CpuMetrics\x12'\n" +
 	"\x0fprocess_percent\x18\x01 \x01(\x01R\x0eprocessPercent\x12%\n" +
@@ -5435,7 +6443,78 @@ const file_gqldb_proto_rawDesc = "" +
 	"\n" +
 	"bytes_recv\x18\x02 \x01(\x04R\tbytesRecv\x12!\n" +
 	"\fpackets_sent\x18\x03 \x01(\x04R\vpacketsSent\x12!\n" +
-	"\fpackets_recv\x18\x04 \x01(\x04R\vpacketsRecv*\x90\a\n" +
+	"\fpackets_recv\x18\x04 \x01(\x04R\vpacketsRecv\"\xfe\x01\n" +
+	"\x16StartBulkImportRequest\x12\x1d\n" +
+	"\n" +
+	"graph_name\x18\x01 \x01(\tR\tgraphName\x12)\n" +
+	"\x10checkpoint_every\x18\x02 \x01(\x03R\x0fcheckpointEvery\x12'\n" +
+	"\x0festimated_nodes\x18\x03 \x01(\x03R\x0eestimatedNodes\x12'\n" +
+	"\x0festimated_edges\x18\x04 \x01(\x03R\x0eestimatedEdges\x12#\n" +
+	"\rmemtable_size\x18\x05 \x01(\x03R\fmemtableSize\x12#\n" +
+	"\rmax_memtables\x18\x06 \x01(\x05R\fmaxMemtables\"\xd8\x01\n" +
+	"\x17StartBulkImportResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x02 \x01(\tR\tsessionId\x12\x18\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage\x12 \n" +
+	"\ftime_cost_ns\x18\x04 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x05 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x06 \x01(\x03R\rcomputeCostNs\"2\n" +
+	"\x11CheckpointRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\"\x8b\x02\n" +
+	"\x12CheckpointResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12!\n" +
+	"\frecord_count\x18\x02 \x01(\x03R\vrecordCount\x122\n" +
+	"\x15last_checkpoint_count\x18\x03 \x01(\x03R\x13lastCheckpointCount\x12\x18\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\x12 \n" +
+	"\ftime_cost_ns\x18\x05 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x06 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\a \x01(\x03R\rcomputeCostNs\"5\n" +
+	"\x14EndBulkImportRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\"\xdc\x01\n" +
+	"\x15EndBulkImportResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12#\n" +
+	"\rtotal_records\x18\x02 \x01(\x03R\ftotalRecords\x12\x18\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage\x12 \n" +
+	"\ftime_cost_ns\x18\x04 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x05 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x06 \x01(\x03R\rcomputeCostNs\"7\n" +
+	"\x16AbortBulkImportRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\"\xb9\x01\n" +
+	"\x17AbortBulkImportResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12 \n" +
+	"\ftime_cost_ns\x18\x03 \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\x04 \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\x05 \x01(\x03R\rcomputeCostNs\";\n" +
+	"\x1aGetBulkImportStatusRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\"\xe0\x02\n" +
+	"\x1bGetBulkImportStatusResponse\x12\x1b\n" +
+	"\tis_active\x18\x01 \x01(\bR\bisActive\x12\x1d\n" +
+	"\n" +
+	"graph_name\x18\x02 \x01(\tR\tgraphName\x12!\n" +
+	"\frecord_count\x18\x03 \x01(\x03R\vrecordCount\x122\n" +
+	"\x15last_checkpoint_count\x18\x04 \x01(\x03R\x13lastCheckpointCount\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x05 \x01(\x03R\tcreatedAt\x12#\n" +
+	"\rlast_activity\x18\x06 \x01(\x03R\flastActivity\x12 \n" +
+	"\ftime_cost_ns\x18\a \x01(\x03R\n" +
+	"timeCostNs\x12 \n" +
+	"\fdisk_cost_ns\x18\b \x01(\x03R\n" +
+	"diskCostNs\x12&\n" +
+	"\x0fcompute_cost_ns\x18\t \x01(\x03R\rcomputeCostNs*\x90\a\n" +
 	"\fPropertyType\x12\x17\n" +
 	"\x13PROPERTY_TYPE_UNSET\x10\x00\x12\x17\n" +
 	"\x13PROPERTY_TYPE_INT32\x10\x01\x12\x18\n" +
@@ -5549,7 +6628,7 @@ func file_gqldb_proto_rawDescGZIP() []byte {
 }
 
 var file_gqldb_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_gqldb_proto_msgTypes = make([]protoimpl.MessageInfo, 83)
+var file_gqldb_proto_msgTypes = make([]protoimpl.MessageInfo, 84)
 var file_gqldb_proto_goTypes = []any{
 	(PropertyType)(0),                         // 0: gqldb.PropertyType
 	(GraphType)(0),                            // 1: gqldb.GraphType
@@ -5566,79 +6645,80 @@ var file_gqldb_proto_goTypes = []any{
 	(*PingRequest)(nil),                       // 12: gqldb.PingRequest
 	(*PingResponse)(nil),                      // 13: gqldb.PingResponse
 	(*GqlRequest)(nil),                        // 14: gqldb.GqlRequest
-	(*GqlResponse)(nil),                       // 15: gqldb.GqlResponse
-	(*ExplainResponse)(nil),                   // 16: gqldb.ExplainResponse
-	(*ProfileResponse)(nil),                   // 17: gqldb.ProfileResponse
-	(*NodeData)(nil),                          // 18: gqldb.NodeData
-	(*EdgeData)(nil),                          // 19: gqldb.EdgeData
-	(*BulkCreateNodesOptions)(nil),            // 20: gqldb.BulkCreateNodesOptions
-	(*BulkCreateEdgesOptions)(nil),            // 21: gqldb.BulkCreateEdgesOptions
-	(*InsertNodesRequest)(nil),                // 22: gqldb.InsertNodesRequest
-	(*InsertNodesResponse)(nil),               // 23: gqldb.InsertNodesResponse
-	(*InsertEdgesRequest)(nil),                // 24: gqldb.InsertEdgesRequest
-	(*InsertEdgesResponse)(nil),               // 25: gqldb.InsertEdgesResponse
-	(*ExportRequest)(nil),                     // 26: gqldb.ExportRequest
-	(*ExportResponse)(nil),                    // 27: gqldb.ExportResponse
-	(*ExportStats)(nil),                       // 28: gqldb.ExportStats
-	(*CreateGraphRequest)(nil),                // 29: gqldb.CreateGraphRequest
-	(*CreateGraphResponse)(nil),               // 30: gqldb.CreateGraphResponse
-	(*DropGraphRequest)(nil),                  // 31: gqldb.DropGraphRequest
-	(*DropGraphResponse)(nil),                 // 32: gqldb.DropGraphResponse
-	(*UseGraphRequest)(nil),                   // 33: gqldb.UseGraphRequest
-	(*UseGraphResponse)(nil),                  // 34: gqldb.UseGraphResponse
-	(*ListGraphsRequest)(nil),                 // 35: gqldb.ListGraphsRequest
-	(*ListGraphsResponse)(nil),                // 36: gqldb.ListGraphsResponse
-	(*GetGraphInfoRequest)(nil),               // 37: gqldb.GetGraphInfoRequest
-	(*GetGraphInfoResponse)(nil),              // 38: gqldb.GetGraphInfoResponse
-	(*GraphInfo)(nil),                         // 39: gqldb.GraphInfo
-	(*BeginRequest)(nil),                      // 40: gqldb.BeginRequest
-	(*BeginResponse)(nil),                     // 41: gqldb.BeginResponse
-	(*CommitRequest)(nil),                     // 42: gqldb.CommitRequest
-	(*CommitResponse)(nil),                    // 43: gqldb.CommitResponse
-	(*RollbackRequest)(nil),                   // 44: gqldb.RollbackRequest
-	(*RollbackResponse)(nil),                  // 45: gqldb.RollbackResponse
-	(*ListTransactionsRequest)(nil),           // 46: gqldb.ListTransactionsRequest
-	(*ListTransactionsResponse)(nil),          // 47: gqldb.ListTransactionsResponse
-	(*TransactionInfo)(nil),                   // 48: gqldb.TransactionInfo
-	(*HealthCheckRequest)(nil),                // 49: gqldb.HealthCheckRequest
-	(*HealthCheckResponse)(nil),               // 50: gqldb.HealthCheckResponse
-	(*WarmupParserRequest)(nil),               // 51: gqldb.WarmupParserRequest
-	(*WarmupParserResponse)(nil),              // 52: gqldb.WarmupParserResponse
-	(*GetCacheStatsRequest)(nil),              // 53: gqldb.GetCacheStatsRequest
-	(*CacheStatsResponse)(nil),                // 54: gqldb.CacheStatsResponse
-	(*ASTCacheStats)(nil),                     // 55: gqldb.ASTCacheStats
-	(*PlanCacheStats)(nil),                    // 56: gqldb.PlanCacheStats
-	(*ClearCacheRequest)(nil),                 // 57: gqldb.ClearCacheRequest
-	(*ClearCacheResponse)(nil),                // 58: gqldb.ClearCacheResponse
-	(*GetStatisticsRequest)(nil),              // 59: gqldb.GetStatisticsRequest
-	(*GetStatisticsResponse)(nil),             // 60: gqldb.GetStatisticsResponse
-	(*InvalidatePermissionCacheRequest)(nil),  // 61: gqldb.InvalidatePermissionCacheRequest
-	(*InvalidatePermissionCacheResponse)(nil), // 62: gqldb.InvalidatePermissionCacheResponse
-	(*CompactRequest)(nil),                    // 63: gqldb.CompactRequest
-	(*CompactResponse)(nil),                   // 64: gqldb.CompactResponse
-	(*WaitForComputeTopologyRequest)(nil),     // 65: gqldb.WaitForComputeTopologyRequest
-	(*WaitForComputeTopologyResponse)(nil),    // 66: gqldb.WaitForComputeTopologyResponse
-	(*StartBulkImportRequest)(nil),            // 67: gqldb.StartBulkImportRequest
-	(*StartBulkImportResponse)(nil),           // 68: gqldb.StartBulkImportResponse
-	(*CheckpointRequest)(nil),                 // 69: gqldb.CheckpointRequest
-	(*CheckpointResponse)(nil),                // 70: gqldb.CheckpointResponse
-	(*EndBulkImportRequest)(nil),              // 71: gqldb.EndBulkImportRequest
-	(*EndBulkImportResponse)(nil),             // 72: gqldb.EndBulkImportResponse
-	(*AbortBulkImportRequest)(nil),            // 73: gqldb.AbortBulkImportRequest
-	(*AbortBulkImportResponse)(nil),           // 74: gqldb.AbortBulkImportResponse
-	(*GetBulkImportStatusRequest)(nil),        // 75: gqldb.GetBulkImportStatusRequest
-	(*GetBulkImportStatusResponse)(nil),       // 76: gqldb.GetBulkImportStatusResponse
-	(*GetSystemMetricsRequest)(nil),           // 77: gqldb.GetSystemMetricsRequest
-	(*GetSystemMetricsResponse)(nil),          // 78: gqldb.GetSystemMetricsResponse
-	(*CpuMetrics)(nil),                        // 79: gqldb.CpuMetrics
-	(*MemoryMetrics)(nil),                     // 80: gqldb.MemoryMetrics
-	(*DiskIOMetrics)(nil),                     // 81: gqldb.DiskIOMetrics
-	(*StorageMetrics)(nil),                    // 82: gqldb.StorageMetrics
-	(*NetworkMetrics)(nil),                    // 83: gqldb.NetworkMetrics
-	nil,                                       // 84: gqldb.NodeData.PropertiesEntry
-	nil,                                       // 85: gqldb.EdgeData.PropertiesEntry
-	nil,                                       // 86: gqldb.GetStatisticsResponse.LabelCountsEntry
-	nil,                                       // 87: gqldb.GetStatisticsResponse.EdgeLabelCountsEntry
+	(*DmlStats)(nil),                          // 15: gqldb.DmlStats
+	(*GqlResponse)(nil),                       // 16: gqldb.GqlResponse
+	(*ExplainResponse)(nil),                   // 17: gqldb.ExplainResponse
+	(*ProfileResponse)(nil),                   // 18: gqldb.ProfileResponse
+	(*NodeData)(nil),                          // 19: gqldb.NodeData
+	(*EdgeData)(nil),                          // 20: gqldb.EdgeData
+	(*BulkCreateNodesOptions)(nil),            // 21: gqldb.BulkCreateNodesOptions
+	(*BulkCreateEdgesOptions)(nil),            // 22: gqldb.BulkCreateEdgesOptions
+	(*InsertNodesRequest)(nil),                // 23: gqldb.InsertNodesRequest
+	(*InsertNodesResponse)(nil),               // 24: gqldb.InsertNodesResponse
+	(*InsertEdgesRequest)(nil),                // 25: gqldb.InsertEdgesRequest
+	(*InsertEdgesResponse)(nil),               // 26: gqldb.InsertEdgesResponse
+	(*ExportRequest)(nil),                     // 27: gqldb.ExportRequest
+	(*ExportResponse)(nil),                    // 28: gqldb.ExportResponse
+	(*ExportStats)(nil),                       // 29: gqldb.ExportStats
+	(*CreateGraphRequest)(nil),                // 30: gqldb.CreateGraphRequest
+	(*CreateGraphResponse)(nil),               // 31: gqldb.CreateGraphResponse
+	(*DropGraphRequest)(nil),                  // 32: gqldb.DropGraphRequest
+	(*DropGraphResponse)(nil),                 // 33: gqldb.DropGraphResponse
+	(*UseGraphRequest)(nil),                   // 34: gqldb.UseGraphRequest
+	(*UseGraphResponse)(nil),                  // 35: gqldb.UseGraphResponse
+	(*ListGraphsRequest)(nil),                 // 36: gqldb.ListGraphsRequest
+	(*ListGraphsResponse)(nil),                // 37: gqldb.ListGraphsResponse
+	(*GetGraphInfoRequest)(nil),               // 38: gqldb.GetGraphInfoRequest
+	(*GetGraphInfoResponse)(nil),              // 39: gqldb.GetGraphInfoResponse
+	(*GraphInfo)(nil),                         // 40: gqldb.GraphInfo
+	(*BeginRequest)(nil),                      // 41: gqldb.BeginRequest
+	(*BeginResponse)(nil),                     // 42: gqldb.BeginResponse
+	(*CommitRequest)(nil),                     // 43: gqldb.CommitRequest
+	(*CommitResponse)(nil),                    // 44: gqldb.CommitResponse
+	(*RollbackRequest)(nil),                   // 45: gqldb.RollbackRequest
+	(*RollbackResponse)(nil),                  // 46: gqldb.RollbackResponse
+	(*ListTransactionsRequest)(nil),           // 47: gqldb.ListTransactionsRequest
+	(*ListTransactionsResponse)(nil),          // 48: gqldb.ListTransactionsResponse
+	(*TransactionInfo)(nil),                   // 49: gqldb.TransactionInfo
+	(*HealthCheckRequest)(nil),                // 50: gqldb.HealthCheckRequest
+	(*HealthCheckResponse)(nil),               // 51: gqldb.HealthCheckResponse
+	(*WarmupParserRequest)(nil),               // 52: gqldb.WarmupParserRequest
+	(*WarmupParserResponse)(nil),              // 53: gqldb.WarmupParserResponse
+	(*GetCacheStatsRequest)(nil),              // 54: gqldb.GetCacheStatsRequest
+	(*CacheStatsResponse)(nil),                // 55: gqldb.CacheStatsResponse
+	(*ASTCacheStats)(nil),                     // 56: gqldb.ASTCacheStats
+	(*PlanCacheStats)(nil),                    // 57: gqldb.PlanCacheStats
+	(*ClearCacheRequest)(nil),                 // 58: gqldb.ClearCacheRequest
+	(*ClearCacheResponse)(nil),                // 59: gqldb.ClearCacheResponse
+	(*GetStatisticsRequest)(nil),              // 60: gqldb.GetStatisticsRequest
+	(*GetStatisticsResponse)(nil),             // 61: gqldb.GetStatisticsResponse
+	(*InvalidatePermissionCacheRequest)(nil),  // 62: gqldb.InvalidatePermissionCacheRequest
+	(*InvalidatePermissionCacheResponse)(nil), // 63: gqldb.InvalidatePermissionCacheResponse
+	(*CompactRequest)(nil),                    // 64: gqldb.CompactRequest
+	(*CompactResponse)(nil),                   // 65: gqldb.CompactResponse
+	(*WaitForComputeTopologyRequest)(nil),     // 66: gqldb.WaitForComputeTopologyRequest
+	(*WaitForComputeTopologyResponse)(nil),    // 67: gqldb.WaitForComputeTopologyResponse
+	(*GetSystemMetricsRequest)(nil),           // 68: gqldb.GetSystemMetricsRequest
+	(*GetSystemMetricsResponse)(nil),          // 69: gqldb.GetSystemMetricsResponse
+	(*CpuMetrics)(nil),                        // 70: gqldb.CpuMetrics
+	(*MemoryMetrics)(nil),                     // 71: gqldb.MemoryMetrics
+	(*DiskIOMetrics)(nil),                     // 72: gqldb.DiskIOMetrics
+	(*StorageMetrics)(nil),                    // 73: gqldb.StorageMetrics
+	(*NetworkMetrics)(nil),                    // 74: gqldb.NetworkMetrics
+	(*StartBulkImportRequest)(nil),            // 75: gqldb.StartBulkImportRequest
+	(*StartBulkImportResponse)(nil),           // 76: gqldb.StartBulkImportResponse
+	(*CheckpointRequest)(nil),                 // 77: gqldb.CheckpointRequest
+	(*CheckpointResponse)(nil),                // 78: gqldb.CheckpointResponse
+	(*EndBulkImportRequest)(nil),              // 79: gqldb.EndBulkImportRequest
+	(*EndBulkImportResponse)(nil),             // 80: gqldb.EndBulkImportResponse
+	(*AbortBulkImportRequest)(nil),            // 81: gqldb.AbortBulkImportRequest
+	(*AbortBulkImportResponse)(nil),           // 82: gqldb.AbortBulkImportResponse
+	(*GetBulkImportStatusRequest)(nil),        // 83: gqldb.GetBulkImportStatusRequest
+	(*GetBulkImportStatusResponse)(nil),       // 84: gqldb.GetBulkImportStatusResponse
+	nil,                                       // 85: gqldb.NodeData.PropertiesEntry
+	nil,                                       // 86: gqldb.EdgeData.PropertiesEntry
+	nil,                                       // 87: gqldb.GetStatisticsResponse.LabelCountsEntry
+	nil,                                       // 88: gqldb.GetStatisticsResponse.EdgeLabelCountsEntry
 }
 var file_gqldb_proto_depIdxs = []int32{
 	0,  // 0: gqldb.TypedValue.type:type_name -> gqldb.PropertyType
@@ -5646,107 +6726,108 @@ var file_gqldb_proto_depIdxs = []int32{
 	5,  // 2: gqldb.Row.values:type_name -> gqldb.TypedValue
 	6,  // 3: gqldb.GqlRequest.parameters:type_name -> gqldb.Parameter
 	7,  // 4: gqldb.GqlResponse.rows:type_name -> gqldb.Row
-	84, // 5: gqldb.NodeData.properties:type_name -> gqldb.NodeData.PropertiesEntry
-	85, // 6: gqldb.EdgeData.properties:type_name -> gqldb.EdgeData.PropertiesEntry
-	3,  // 7: gqldb.BulkCreateNodesOptions.mode:type_name -> gqldb.InsertMode
-	3,  // 8: gqldb.BulkCreateEdgesOptions.mode:type_name -> gqldb.InsertMode
-	18, // 9: gqldb.InsertNodesRequest.nodes:type_name -> gqldb.NodeData
-	20, // 10: gqldb.InsertNodesRequest.options:type_name -> gqldb.BulkCreateNodesOptions
-	19, // 11: gqldb.InsertEdgesRequest.edges:type_name -> gqldb.EdgeData
-	21, // 12: gqldb.InsertEdgesRequest.options:type_name -> gqldb.BulkCreateEdgesOptions
-	28, // 13: gqldb.ExportResponse.stats:type_name -> gqldb.ExportStats
-	1,  // 14: gqldb.CreateGraphRequest.graph_type:type_name -> gqldb.GraphType
-	39, // 15: gqldb.ListGraphsResponse.graphs:type_name -> gqldb.GraphInfo
-	39, // 16: gqldb.GetGraphInfoResponse.info:type_name -> gqldb.GraphInfo
-	1,  // 17: gqldb.GraphInfo.graph_type:type_name -> gqldb.GraphType
-	48, // 18: gqldb.ListTransactionsResponse.transactions:type_name -> gqldb.TransactionInfo
-	2,  // 19: gqldb.HealthCheckResponse.status:type_name -> gqldb.HealthStatus
-	4,  // 20: gqldb.GetCacheStatsRequest.cache_type:type_name -> gqldb.CacheType
-	55, // 21: gqldb.CacheStatsResponse.ast_stats:type_name -> gqldb.ASTCacheStats
-	56, // 22: gqldb.CacheStatsResponse.plan_stats:type_name -> gqldb.PlanCacheStats
-	4,  // 23: gqldb.ClearCacheRequest.cache_type:type_name -> gqldb.CacheType
-	86, // 24: gqldb.GetStatisticsResponse.label_counts:type_name -> gqldb.GetStatisticsResponse.LabelCountsEntry
-	87, // 25: gqldb.GetStatisticsResponse.edge_label_counts:type_name -> gqldb.GetStatisticsResponse.EdgeLabelCountsEntry
-	79, // 26: gqldb.GetSystemMetricsResponse.cpu:type_name -> gqldb.CpuMetrics
-	80, // 27: gqldb.GetSystemMetricsResponse.memory:type_name -> gqldb.MemoryMetrics
-	81, // 28: gqldb.GetSystemMetricsResponse.disk_io:type_name -> gqldb.DiskIOMetrics
-	82, // 29: gqldb.GetSystemMetricsResponse.storage:type_name -> gqldb.StorageMetrics
-	83, // 30: gqldb.GetSystemMetricsResponse.network:type_name -> gqldb.NetworkMetrics
-	5,  // 31: gqldb.NodeData.PropertiesEntry.value:type_name -> gqldb.TypedValue
-	5,  // 32: gqldb.EdgeData.PropertiesEntry.value:type_name -> gqldb.TypedValue
-	8,  // 33: gqldb.SessionService.Login:input_type -> gqldb.LoginRequest
-	10, // 34: gqldb.SessionService.Logout:input_type -> gqldb.LogoutRequest
-	12, // 35: gqldb.SessionService.Ping:input_type -> gqldb.PingRequest
-	14, // 36: gqldb.QueryService.Gql:input_type -> gqldb.GqlRequest
-	14, // 37: gqldb.QueryService.GqlStream:input_type -> gqldb.GqlRequest
-	14, // 38: gqldb.QueryService.Explain:input_type -> gqldb.GqlRequest
-	14, // 39: gqldb.QueryService.Profile:input_type -> gqldb.GqlRequest
-	22, // 40: gqldb.DataService.InsertNodes:input_type -> gqldb.InsertNodesRequest
-	24, // 41: gqldb.DataService.InsertEdges:input_type -> gqldb.InsertEdgesRequest
-	26, // 42: gqldb.DataService.Export:input_type -> gqldb.ExportRequest
-	29, // 43: gqldb.GraphService.CreateGraph:input_type -> gqldb.CreateGraphRequest
-	31, // 44: gqldb.GraphService.DropGraph:input_type -> gqldb.DropGraphRequest
-	33, // 45: gqldb.GraphService.UseGraph:input_type -> gqldb.UseGraphRequest
-	35, // 46: gqldb.GraphService.ListGraphs:input_type -> gqldb.ListGraphsRequest
-	37, // 47: gqldb.GraphService.GetGraphInfo:input_type -> gqldb.GetGraphInfoRequest
-	40, // 48: gqldb.TransactionService.Begin:input_type -> gqldb.BeginRequest
-	42, // 49: gqldb.TransactionService.Commit:input_type -> gqldb.CommitRequest
-	44, // 50: gqldb.TransactionService.Rollback:input_type -> gqldb.RollbackRequest
-	46, // 51: gqldb.TransactionService.ListTransactions:input_type -> gqldb.ListTransactionsRequest
-	49, // 52: gqldb.Health.Check:input_type -> gqldb.HealthCheckRequest
-	49, // 53: gqldb.Health.Watch:input_type -> gqldb.HealthCheckRequest
-	51, // 54: gqldb.AdminService.WarmupParser:input_type -> gqldb.WarmupParserRequest
-	53, // 55: gqldb.AdminService.GetCacheStats:input_type -> gqldb.GetCacheStatsRequest
-	57, // 56: gqldb.AdminService.ClearCache:input_type -> gqldb.ClearCacheRequest
-	59, // 57: gqldb.AdminService.GetStatistics:input_type -> gqldb.GetStatisticsRequest
-	61, // 58: gqldb.AdminService.InvalidatePermissionCache:input_type -> gqldb.InvalidatePermissionCacheRequest
-	63, // 59: gqldb.AdminService.Compact:input_type -> gqldb.CompactRequest
-	65, // 60: gqldb.AdminService.WaitForComputeTopology:input_type -> gqldb.WaitForComputeTopologyRequest
-	77, // 61: gqldb.AdminService.GetSystemMetrics:input_type -> gqldb.GetSystemMetricsRequest
-	67, // 62: gqldb.BulkImportService.StartBulkImport:input_type -> gqldb.StartBulkImportRequest
-	69, // 63: gqldb.BulkImportService.Checkpoint:input_type -> gqldb.CheckpointRequest
-	71, // 64: gqldb.BulkImportService.EndBulkImport:input_type -> gqldb.EndBulkImportRequest
-	73, // 65: gqldb.BulkImportService.AbortBulkImport:input_type -> gqldb.AbortBulkImportRequest
-	75, // 66: gqldb.BulkImportService.GetBulkImportStatus:input_type -> gqldb.GetBulkImportStatusRequest
-	9,  // 67: gqldb.SessionService.Login:output_type -> gqldb.LoginResponse
-	11, // 68: gqldb.SessionService.Logout:output_type -> gqldb.LogoutResponse
-	13, // 69: gqldb.SessionService.Ping:output_type -> gqldb.PingResponse
-	15, // 70: gqldb.QueryService.Gql:output_type -> gqldb.GqlResponse
-	15, // 71: gqldb.QueryService.GqlStream:output_type -> gqldb.GqlResponse
-	16, // 72: gqldb.QueryService.Explain:output_type -> gqldb.ExplainResponse
-	17, // 73: gqldb.QueryService.Profile:output_type -> gqldb.ProfileResponse
-	23, // 74: gqldb.DataService.InsertNodes:output_type -> gqldb.InsertNodesResponse
-	25, // 75: gqldb.DataService.InsertEdges:output_type -> gqldb.InsertEdgesResponse
-	27, // 76: gqldb.DataService.Export:output_type -> gqldb.ExportResponse
-	30, // 77: gqldb.GraphService.CreateGraph:output_type -> gqldb.CreateGraphResponse
-	32, // 78: gqldb.GraphService.DropGraph:output_type -> gqldb.DropGraphResponse
-	34, // 79: gqldb.GraphService.UseGraph:output_type -> gqldb.UseGraphResponse
-	36, // 80: gqldb.GraphService.ListGraphs:output_type -> gqldb.ListGraphsResponse
-	38, // 81: gqldb.GraphService.GetGraphInfo:output_type -> gqldb.GetGraphInfoResponse
-	41, // 82: gqldb.TransactionService.Begin:output_type -> gqldb.BeginResponse
-	43, // 83: gqldb.TransactionService.Commit:output_type -> gqldb.CommitResponse
-	45, // 84: gqldb.TransactionService.Rollback:output_type -> gqldb.RollbackResponse
-	47, // 85: gqldb.TransactionService.ListTransactions:output_type -> gqldb.ListTransactionsResponse
-	50, // 86: gqldb.Health.Check:output_type -> gqldb.HealthCheckResponse
-	50, // 87: gqldb.Health.Watch:output_type -> gqldb.HealthCheckResponse
-	52, // 88: gqldb.AdminService.WarmupParser:output_type -> gqldb.WarmupParserResponse
-	54, // 89: gqldb.AdminService.GetCacheStats:output_type -> gqldb.CacheStatsResponse
-	58, // 90: gqldb.AdminService.ClearCache:output_type -> gqldb.ClearCacheResponse
-	60, // 91: gqldb.AdminService.GetStatistics:output_type -> gqldb.GetStatisticsResponse
-	62, // 92: gqldb.AdminService.InvalidatePermissionCache:output_type -> gqldb.InvalidatePermissionCacheResponse
-	64, // 93: gqldb.AdminService.Compact:output_type -> gqldb.CompactResponse
-	66, // 94: gqldb.AdminService.WaitForComputeTopology:output_type -> gqldb.WaitForComputeTopologyResponse
-	78, // 95: gqldb.AdminService.GetSystemMetrics:output_type -> gqldb.GetSystemMetricsResponse
-	68, // 96: gqldb.BulkImportService.StartBulkImport:output_type -> gqldb.StartBulkImportResponse
-	70, // 97: gqldb.BulkImportService.Checkpoint:output_type -> gqldb.CheckpointResponse
-	72, // 98: gqldb.BulkImportService.EndBulkImport:output_type -> gqldb.EndBulkImportResponse
-	74, // 99: gqldb.BulkImportService.AbortBulkImport:output_type -> gqldb.AbortBulkImportResponse
-	76, // 100: gqldb.BulkImportService.GetBulkImportStatus:output_type -> gqldb.GetBulkImportStatusResponse
-	67, // [67:101] is the sub-list for method output_type
-	33, // [33:67] is the sub-list for method input_type
-	33, // [33:33] is the sub-list for extension type_name
-	33, // [33:33] is the sub-list for extension extendee
-	0,  // [0:33] is the sub-list for field type_name
+	15, // 5: gqldb.GqlResponse.dml_stats:type_name -> gqldb.DmlStats
+	85, // 6: gqldb.NodeData.properties:type_name -> gqldb.NodeData.PropertiesEntry
+	86, // 7: gqldb.EdgeData.properties:type_name -> gqldb.EdgeData.PropertiesEntry
+	3,  // 8: gqldb.BulkCreateNodesOptions.mode:type_name -> gqldb.InsertMode
+	3,  // 9: gqldb.BulkCreateEdgesOptions.mode:type_name -> gqldb.InsertMode
+	19, // 10: gqldb.InsertNodesRequest.nodes:type_name -> gqldb.NodeData
+	21, // 11: gqldb.InsertNodesRequest.options:type_name -> gqldb.BulkCreateNodesOptions
+	20, // 12: gqldb.InsertEdgesRequest.edges:type_name -> gqldb.EdgeData
+	22, // 13: gqldb.InsertEdgesRequest.options:type_name -> gqldb.BulkCreateEdgesOptions
+	29, // 14: gqldb.ExportResponse.stats:type_name -> gqldb.ExportStats
+	1,  // 15: gqldb.CreateGraphRequest.graph_type:type_name -> gqldb.GraphType
+	40, // 16: gqldb.ListGraphsResponse.graphs:type_name -> gqldb.GraphInfo
+	40, // 17: gqldb.GetGraphInfoResponse.info:type_name -> gqldb.GraphInfo
+	1,  // 18: gqldb.GraphInfo.graph_type:type_name -> gqldb.GraphType
+	49, // 19: gqldb.ListTransactionsResponse.transactions:type_name -> gqldb.TransactionInfo
+	2,  // 20: gqldb.HealthCheckResponse.status:type_name -> gqldb.HealthStatus
+	4,  // 21: gqldb.GetCacheStatsRequest.cache_type:type_name -> gqldb.CacheType
+	56, // 22: gqldb.CacheStatsResponse.ast_stats:type_name -> gqldb.ASTCacheStats
+	57, // 23: gqldb.CacheStatsResponse.plan_stats:type_name -> gqldb.PlanCacheStats
+	4,  // 24: gqldb.ClearCacheRequest.cache_type:type_name -> gqldb.CacheType
+	87, // 25: gqldb.GetStatisticsResponse.label_counts:type_name -> gqldb.GetStatisticsResponse.LabelCountsEntry
+	88, // 26: gqldb.GetStatisticsResponse.edge_label_counts:type_name -> gqldb.GetStatisticsResponse.EdgeLabelCountsEntry
+	70, // 27: gqldb.GetSystemMetricsResponse.cpu:type_name -> gqldb.CpuMetrics
+	71, // 28: gqldb.GetSystemMetricsResponse.memory:type_name -> gqldb.MemoryMetrics
+	72, // 29: gqldb.GetSystemMetricsResponse.disk_io:type_name -> gqldb.DiskIOMetrics
+	73, // 30: gqldb.GetSystemMetricsResponse.storage:type_name -> gqldb.StorageMetrics
+	74, // 31: gqldb.GetSystemMetricsResponse.network:type_name -> gqldb.NetworkMetrics
+	5,  // 32: gqldb.NodeData.PropertiesEntry.value:type_name -> gqldb.TypedValue
+	5,  // 33: gqldb.EdgeData.PropertiesEntry.value:type_name -> gqldb.TypedValue
+	8,  // 34: gqldb.SessionService.Login:input_type -> gqldb.LoginRequest
+	10, // 35: gqldb.SessionService.Logout:input_type -> gqldb.LogoutRequest
+	12, // 36: gqldb.SessionService.Ping:input_type -> gqldb.PingRequest
+	14, // 37: gqldb.QueryService.Gql:input_type -> gqldb.GqlRequest
+	14, // 38: gqldb.QueryService.GqlStream:input_type -> gqldb.GqlRequest
+	14, // 39: gqldb.QueryService.Explain:input_type -> gqldb.GqlRequest
+	14, // 40: gqldb.QueryService.Profile:input_type -> gqldb.GqlRequest
+	23, // 41: gqldb.DataService.InsertNodes:input_type -> gqldb.InsertNodesRequest
+	25, // 42: gqldb.DataService.InsertEdges:input_type -> gqldb.InsertEdgesRequest
+	27, // 43: gqldb.DataService.Export:input_type -> gqldb.ExportRequest
+	30, // 44: gqldb.GraphService.CreateGraph:input_type -> gqldb.CreateGraphRequest
+	32, // 45: gqldb.GraphService.DropGraph:input_type -> gqldb.DropGraphRequest
+	34, // 46: gqldb.GraphService.UseGraph:input_type -> gqldb.UseGraphRequest
+	36, // 47: gqldb.GraphService.ListGraphs:input_type -> gqldb.ListGraphsRequest
+	38, // 48: gqldb.GraphService.GetGraphInfo:input_type -> gqldb.GetGraphInfoRequest
+	41, // 49: gqldb.TransactionService.Begin:input_type -> gqldb.BeginRequest
+	43, // 50: gqldb.TransactionService.Commit:input_type -> gqldb.CommitRequest
+	45, // 51: gqldb.TransactionService.Rollback:input_type -> gqldb.RollbackRequest
+	47, // 52: gqldb.TransactionService.ListTransactions:input_type -> gqldb.ListTransactionsRequest
+	50, // 53: gqldb.Health.Check:input_type -> gqldb.HealthCheckRequest
+	50, // 54: gqldb.Health.Watch:input_type -> gqldb.HealthCheckRequest
+	52, // 55: gqldb.AdminService.WarmupParser:input_type -> gqldb.WarmupParserRequest
+	54, // 56: gqldb.AdminService.GetCacheStats:input_type -> gqldb.GetCacheStatsRequest
+	58, // 57: gqldb.AdminService.ClearCache:input_type -> gqldb.ClearCacheRequest
+	60, // 58: gqldb.AdminService.GetStatistics:input_type -> gqldb.GetStatisticsRequest
+	62, // 59: gqldb.AdminService.InvalidatePermissionCache:input_type -> gqldb.InvalidatePermissionCacheRequest
+	64, // 60: gqldb.AdminService.Compact:input_type -> gqldb.CompactRequest
+	66, // 61: gqldb.AdminService.WaitForComputeTopology:input_type -> gqldb.WaitForComputeTopologyRequest
+	68, // 62: gqldb.AdminService.GetSystemMetrics:input_type -> gqldb.GetSystemMetricsRequest
+	75, // 63: gqldb.BulkImportService.StartBulkImport:input_type -> gqldb.StartBulkImportRequest
+	77, // 64: gqldb.BulkImportService.Checkpoint:input_type -> gqldb.CheckpointRequest
+	79, // 65: gqldb.BulkImportService.EndBulkImport:input_type -> gqldb.EndBulkImportRequest
+	81, // 66: gqldb.BulkImportService.AbortBulkImport:input_type -> gqldb.AbortBulkImportRequest
+	83, // 67: gqldb.BulkImportService.GetBulkImportStatus:input_type -> gqldb.GetBulkImportStatusRequest
+	9,  // 68: gqldb.SessionService.Login:output_type -> gqldb.LoginResponse
+	11, // 69: gqldb.SessionService.Logout:output_type -> gqldb.LogoutResponse
+	13, // 70: gqldb.SessionService.Ping:output_type -> gqldb.PingResponse
+	16, // 71: gqldb.QueryService.Gql:output_type -> gqldb.GqlResponse
+	16, // 72: gqldb.QueryService.GqlStream:output_type -> gqldb.GqlResponse
+	17, // 73: gqldb.QueryService.Explain:output_type -> gqldb.ExplainResponse
+	18, // 74: gqldb.QueryService.Profile:output_type -> gqldb.ProfileResponse
+	24, // 75: gqldb.DataService.InsertNodes:output_type -> gqldb.InsertNodesResponse
+	26, // 76: gqldb.DataService.InsertEdges:output_type -> gqldb.InsertEdgesResponse
+	28, // 77: gqldb.DataService.Export:output_type -> gqldb.ExportResponse
+	31, // 78: gqldb.GraphService.CreateGraph:output_type -> gqldb.CreateGraphResponse
+	33, // 79: gqldb.GraphService.DropGraph:output_type -> gqldb.DropGraphResponse
+	35, // 80: gqldb.GraphService.UseGraph:output_type -> gqldb.UseGraphResponse
+	37, // 81: gqldb.GraphService.ListGraphs:output_type -> gqldb.ListGraphsResponse
+	39, // 82: gqldb.GraphService.GetGraphInfo:output_type -> gqldb.GetGraphInfoResponse
+	42, // 83: gqldb.TransactionService.Begin:output_type -> gqldb.BeginResponse
+	44, // 84: gqldb.TransactionService.Commit:output_type -> gqldb.CommitResponse
+	46, // 85: gqldb.TransactionService.Rollback:output_type -> gqldb.RollbackResponse
+	48, // 86: gqldb.TransactionService.ListTransactions:output_type -> gqldb.ListTransactionsResponse
+	51, // 87: gqldb.Health.Check:output_type -> gqldb.HealthCheckResponse
+	51, // 88: gqldb.Health.Watch:output_type -> gqldb.HealthCheckResponse
+	53, // 89: gqldb.AdminService.WarmupParser:output_type -> gqldb.WarmupParserResponse
+	55, // 90: gqldb.AdminService.GetCacheStats:output_type -> gqldb.CacheStatsResponse
+	59, // 91: gqldb.AdminService.ClearCache:output_type -> gqldb.ClearCacheResponse
+	61, // 92: gqldb.AdminService.GetStatistics:output_type -> gqldb.GetStatisticsResponse
+	63, // 93: gqldb.AdminService.InvalidatePermissionCache:output_type -> gqldb.InvalidatePermissionCacheResponse
+	65, // 94: gqldb.AdminService.Compact:output_type -> gqldb.CompactResponse
+	67, // 95: gqldb.AdminService.WaitForComputeTopology:output_type -> gqldb.WaitForComputeTopologyResponse
+	69, // 96: gqldb.AdminService.GetSystemMetrics:output_type -> gqldb.GetSystemMetricsResponse
+	76, // 97: gqldb.BulkImportService.StartBulkImport:output_type -> gqldb.StartBulkImportResponse
+	78, // 98: gqldb.BulkImportService.Checkpoint:output_type -> gqldb.CheckpointResponse
+	80, // 99: gqldb.BulkImportService.EndBulkImport:output_type -> gqldb.EndBulkImportResponse
+	82, // 100: gqldb.BulkImportService.AbortBulkImport:output_type -> gqldb.AbortBulkImportResponse
+	84, // 101: gqldb.BulkImportService.GetBulkImportStatus:output_type -> gqldb.GetBulkImportStatusResponse
+	68, // [68:102] is the sub-list for method output_type
+	34, // [34:68] is the sub-list for method input_type
+	34, // [34:34] is the sub-list for extension type_name
+	34, // [34:34] is the sub-list for extension extendee
+	0,  // [0:34] is the sub-list for field type_name
 }
 
 func init() { file_gqldb_proto_init() }
@@ -5760,7 +6841,7 @@ func file_gqldb_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gqldb_proto_rawDesc), len(file_gqldb_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   83,
+			NumMessages:   84,
 			NumExtensions: 0,
 			NumServices:   8,
 		},

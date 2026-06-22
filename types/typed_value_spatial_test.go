@@ -18,7 +18,9 @@ func mustParse(t *testing.T, s string, pt PropertyType) *TypedValue {
 }
 
 func TestParsePoint(t *testing.T) {
-	want := Point{Latitude: 30.5, Longitude: 114.3}
+	// A parsed point has no SRID; the encode/decode round-trip (via ToGo)
+	// fills the default 2D SRID, so the decoded value carries DefaultPoint2DSRID.
+	want := Point{Latitude: 30.5, Longitude: 114.3, SRID: DefaultPoint2DSRID}
 	for _, s := range []string{
 		"point({latitude: 30.5, longitude: 114.3})",
 		"point({longitude: 114.3, latitude: 30.5})", // key order independent

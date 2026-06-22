@@ -168,8 +168,6 @@ func TestAbortBulkImport(t *testing.T) {
 }
 
 func TestStartBulkImportNonexistentGraph(t *testing.T) {
-	t.Skip("Server bug: bulk import on nonexistent graph does not raise error (open12 #9)")
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -182,8 +180,6 @@ func TestStartBulkImportNonexistentGraph(t *testing.T) {
 }
 
 func TestStartBulkImportEmptyGraph(t *testing.T) {
-	t.Skip("Server bug: bulk import with empty graph name does not raise error (open12 #10)")
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

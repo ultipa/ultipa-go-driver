@@ -826,15 +826,20 @@ func TestSpatialTypesRoundtrip(t *testing.T) {
 	}()
 
 	t.Run("Point", func(t *testing.T) {
+		// wantSRID is the SRID we expect to read back: cases that leave SRID
+		// unset (0) must come back as the default 2D SRID (server normalizes),
+		// while an explicit SRID must round-trip unchanged.
 		testCases := []struct {
-			name  string
-			value gqldb.Point
+			name     string
+			value    gqldb.Point
+			wantSRID int32
 		}{
-			{"nyc", gqldb.Point{Latitude: 40.7128, Longitude: -74.0060}},
-			{"origin", gqldb.Point{Latitude: 0.0, Longitude: 0.0}},
-			{"tokyo", gqldb.Point{Latitude: 35.6762, Longitude: 139.6503}},
-			{"maxLat", gqldb.Point{Latitude: 90.0, Longitude: 180.0}},
-			{"minLat", gqldb.Point{Latitude: -90.0, Longitude: -180.0}},
+			{"nyc", gqldb.Point{Latitude: 40.7128, Longitude: -74.0060}, gqldb.DefaultPoint2DSRID},
+			{"origin", gqldb.Point{Latitude: 0.0, Longitude: 0.0}, gqldb.DefaultPoint2DSRID},
+			{"tokyo", gqldb.Point{Latitude: 35.6762, Longitude: 139.6503}, gqldb.DefaultPoint2DSRID},
+			{"maxLat", gqldb.Point{Latitude: 90.0, Longitude: 180.0}, gqldb.DefaultPoint2DSRID},
+			{"minLat", gqldb.Point{Latitude: -90.0, Longitude: -180.0}, gqldb.DefaultPoint2DSRID},
+			{"explicitSrid", gqldb.Point{Latitude: 30.5, Longitude: 114.3, SRID: 3857}, 3857},
 		}
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -845,19 +850,30 @@ func TestSpatialTypesRoundtrip(t *testing.T) {
 				}
 				assertFloat64Equal(t, "latitude", tc.value.Latitude, actual.Latitude, 1e-10)
 				assertFloat64Equal(t, "longitude", tc.value.Longitude, actual.Longitude, 1e-10)
+				if actual.SRID != tc.wantSRID {
+					t.Errorf("SRID: expected %d, got %d", tc.wantSRID, actual.SRID)
+				}
 			})
 		}
 	})
 
 	t.Run("Point3D", func(t *testing.T) {
+		// NOTE: for a Point3D sent with SRID unset (0), the server does NOT
+		// echo 0 back — it normalizes to its canonical 3D SRID 9157. (The 2D
+		// case normalizes unset -> 4326, which matches DefaultPoint2DSRID, but
+		// the 3D default differs from the driver's send-time DefaultPoint3DSRID
+		// of 0.) An explicit non-zero SRID round-trips unchanged.
+		const serverDefaultPoint3DSRID = 9157
 		testCases := []struct {
-			name  string
-			value gqldb.Point3D
+			name     string
+			value    gqldb.Point3D
+			wantSRID int32
 		}{
-			{"origin", gqldb.Point3D{X: 0.0, Y: 0.0, Z: 0.0}},
-			{"unit", gqldb.Point3D{X: 1.0, Y: 2.0, Z: 3.0}},
-			{"negative", gqldb.Point3D{X: -1.5, Y: -2.5, Z: -3.5}},
-			{"large", gqldb.Point3D{X: 1e10, Y: 1e10, Z: 1e10}},
+			{"origin", gqldb.Point3D{X: 0.0, Y: 0.0, Z: 0.0}, serverDefaultPoint3DSRID},
+			{"unit", gqldb.Point3D{X: 1.0, Y: 2.0, Z: 3.0}, serverDefaultPoint3DSRID},
+			{"negative", gqldb.Point3D{X: -1.5, Y: -2.5, Z: -3.5}, serverDefaultPoint3DSRID},
+			{"large", gqldb.Point3D{X: 1e10, Y: 1e10, Z: 1e10}, serverDefaultPoint3DSRID},
+			{"explicitSrid", gqldb.Point3D{X: 1.0, Y: 2.0, Z: 3.0, SRID: 7}, 7},
 		}
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -869,6 +885,9 @@ func TestSpatialTypesRoundtrip(t *testing.T) {
 				assertFloat64Equal(t, "X", tc.value.X, actual.X, 1e-10)
 				assertFloat64Equal(t, "Y", tc.value.Y, actual.Y, 1e-10)
 				assertFloat64Equal(t, "Z", tc.value.Z, actual.Z, 1e-10)
+				if actual.SRID != tc.wantSRID {
+					t.Errorf("SRID: expected %d, got %d", tc.wantSRID, actual.SRID)
+				}
 			})
 		}
 	})

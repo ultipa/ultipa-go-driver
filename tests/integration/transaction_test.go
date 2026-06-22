@@ -66,7 +66,6 @@ func TestRollbackInvalidTxId(t *testing.T) {
 }
 
 func TestBeginNonexistentGraph(t *testing.T) {
-	t.Skip("Server bug: begin on nonexistent graph succeeds and locks session permanently (open12 #10)")
 	ensureLoggedIn(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

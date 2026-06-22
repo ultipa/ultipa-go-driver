@@ -14,7 +14,18 @@ import (
 type Point struct {
 	Latitude  float64
 	Longitude float64
+	// SRID is the spatial reference system id. 0 means "unset" — the encoder
+	// fills DefaultPoint2DSRID (WGS-84). Decoded values from servers that
+	// don't report an SRID (legacy 16-byte form) also fall back to the default.
+	SRID int32
 }
+
+// Default spatial reference system ids, matching the server converter
+// (server/converter/from_proto.go).
+const (
+	DefaultPoint2DSRID = 4326 // WGS-84 (geographic)
+	DefaultPoint3DSRID = 0    // cartesian, no CRS
+)
 
 // X is an alias for Longitude — matches the Point3D x/y/z convention.
 func (p Point) X() float64 { return p.Longitude }
@@ -32,6 +43,9 @@ type Point3D struct {
 	X float64
 	Y float64
 	Z float64
+	// SRID is the spatial reference system id. 0 means "unset" — the encoder
+	// fills DefaultPoint3DSRID (0, cartesian). See Point.SRID.
+	SRID int32
 }
 
 // Longitude is an alias for X — for geographic-style readers.

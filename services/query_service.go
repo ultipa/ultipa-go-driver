@@ -69,6 +69,27 @@ type Response struct {
 	TimeCostNs    int64
 	DiskCostNs    int64
 	ComputeCostNs int64
+	// DmlStats holds per-category data-modification counts for a DML query
+	// (INSERT / SET / REMOVE / DELETE / MERGE). nil for a pure read or a
+	// pre-DmlStats server — treat "absent" as "not a data-modifying query",
+	// NOT as "changed nothing". RowsAffected stays the sum across categories.
+	// Streaming queries populate only on the final batch (HasMore=false),
+	// matching CurrentGraph / RowsAffected / the timing trio.
+	DmlStats *DmlStats
+}
+
+// DmlStats reports per-category data-modification counts, mirroring the
+// server's DmlStats proto message (and the engine ResultSet's DMLStats).
+// Each field counts that op category; RowsAffected is their sum. A nil
+// *DmlStats means "not a data-modifying query" (pure read or a pre-DmlStats
+// server), NOT "changed nothing".
+type DmlStats struct {
+	InsertedNodes int64
+	InsertedEdges int64
+	DeletedNodes  int64
+	DeletedEdges  int64
+	SetNodes      int64
+	SetEdges      int64
 }
 
 // Row represents a result row (mirrors main package).
@@ -90,6 +111,16 @@ type Parameter struct {
 func (s *QueryService) Gql(ctx context.Context, query string, config *QueryConfig,
 	newParameter func(name string, value interface{}) (*Parameter, error),
 	getDefaultGraph func() string, getTimeout func() int) (*Response, error) {
+	return s.GqlVia(ctx, s.ctx.QueryClient, query, config, newParameter, getDefaultGraph, getTimeout)
+}
+
+// GqlVia executes a GQL query against an EXPLICIT QueryServiceClient — identical to Gql except the
+// caller chooses the gRPC client. Used by HA follower-read routing to run a read on a follower's
+// connection (design §12); the too-large-result streaming fallback still uses the service's default
+// (leader-pinned) streaming path.
+func (s *QueryService) GqlVia(ctx context.Context, qc pb.QueryServiceClient, query string, config *QueryConfig,
+	newParameter func(name string, value interface{}) (*Parameter, error),
+	getDefaultGraph func() string, getTimeout func() int) (*Response, error) {
 
 	ctx = s.ctx.WithSessionMetadata(ctx)
 
@@ -98,7 +129,7 @@ func (s *QueryService) Gql(ctx context.Context, query string, config *QueryConfi
 		return nil, err
 	}
 
-	resp, err := s.ctx.QueryClient.Gql(ctx, req)
+	resp, err := qc.Gql(ctx, req)
 	if err != nil {
 		if st, ok := status.FromError(err); ok &&
 			st.Code() == codes.ResourceExhausted &&
@@ -190,6 +221,11 @@ func (s *QueryService) gqlStreamCollect(ctx context.Context, query string, confi
 		}
 		if chunk.ComputeCostNs != 0 {
 			merged.ComputeCostNs = chunk.ComputeCostNs
+		}
+		// DmlStats arrives only on the final batch (has_more=false); take
+		// the latest non-nil value (nil means the chunk carried no stats).
+		if chunk.DmlStats != nil {
+			merged.DmlStats = chunk.DmlStats
 		}
 		return nil
 	}, newParameter, getDefaultGraph, getTimeout)
@@ -364,5 +400,32 @@ func (s *QueryService) convertGqlResponse(resp *pb.GqlResponse) (*Response, erro
 		TimeCostNs:    resp.TimeCostNs,
 		DiskCostNs:    resp.DiskCostNs,
 		ComputeCostNs: resp.ComputeCostNs,
+		DmlStats:      convertDmlStats(resp.GetDmlStats()),
 	}, nil
+}
+
+// convertDmlStats maps the proto DmlStats sub-message onto the package-level
+// DmlStats. Returns nil when the sub-message is absent (pure read / old
+// server) or all-zero, mirroring the server which omits the message for a
+// non-data-modifying query — so callers can treat "absent" as "not a DML
+// query", not "changed nothing".
+func convertDmlStats(raw *pb.DmlStats) *DmlStats {
+	if raw == nil {
+		return nil
+	}
+	stats := &DmlStats{
+		InsertedNodes: raw.GetInsertedNodes(),
+		InsertedEdges: raw.GetInsertedEdges(),
+		DeletedNodes:  raw.GetDeletedNodes(),
+		DeletedEdges:  raw.GetDeletedEdges(),
+		SetNodes:      raw.GetSetNodes(),
+		SetEdges:      raw.GetSetEdges(),
+	}
+	total := stats.InsertedNodes + stats.InsertedEdges +
+		stats.DeletedNodes + stats.DeletedEdges +
+		stats.SetNodes + stats.SetEdges
+	if total == 0 {
+		return nil
+	}
+	return stats
 }

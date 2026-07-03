@@ -1901,3 +1901,281 @@ var BulkImportService_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "gqldb.proto",
 }
+
+const (
+	LoaderService_LoadOntology_FullMethodName          = "/gqldb.LoaderService/LoadOntology"
+	LoaderService_LoadData_FullMethodName              = "/gqldb.LoaderService/LoadData"
+	LoaderService_LoadCsv_FullMethodName               = "/gqldb.LoaderService/LoadCsv"
+	LoaderService_LoadPrefix_FullMethodName            = "/gqldb.LoaderService/LoadPrefix"
+	LoaderService_GetLoaderCapabilities_FullMethodName = "/gqldb.LoaderService/GetLoaderCapabilities"
+)
+
+// LoaderServiceClient is the client API for LoaderService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// LoaderService lets a driver load files into a graph by UPLOADING the file's
+// bytes from the client. The file lives on the client machine, not the server,
+// so GQL `LOAD ... FROM '<server-path|url>'` (reachable via QueryService.Gql)
+// cannot see it — these RPCs close that gap.
+//
+// The three file RPCs are client-streaming: the FIRST message carries the typed
+// header, every LATER message carries a raw byte chunk of the file; the server
+// replies once with typed counts after consuming the stream (client calls
+// CloseAndRecv). Each header also has an optional `source`: when set with no
+// chunks, the server loads from that server-reachable path/URL instead, for
+// parity with the GQL form.
+//
+// `format` is REQUIRED for uploads (a raw stream has no extension/content-type
+// to auto-detect from). Uploads are size-capped (see
+// GetLoaderCapabilities.max_upload_bytes) and require the same RBAC as the GQL
+// LOAD: manage-ontology for ontology/data/prefix; restore + insert for CSV.
+type LoaderServiceClient interface {
+	// LoadOntology uploads and loads an ontology schema (OWL/RDF-XML/Turtle/N-Triples).
+	LoadOntology(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[LoadOntologyRequest, LoadOntologyResponse], error)
+	// LoadData uploads and loads RDF instance data (Turtle/N-Triples) as nodes/edges.
+	LoadData(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[LoadDataRequest, LoadDataResponse], error)
+	// LoadCsv uploads and imports CSV rows as nodes or edges.
+	LoadCsv(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[LoadCsvRequest, LoadCsvResponse], error)
+	// LoadPrefix registers namespace prefixes (single, standard set, or bulk-from-URL).
+	LoadPrefix(ctx context.Context, in *LoadPrefixRequest, opts ...grpc.CallOption) (*LoadPrefixResponse, error)
+	// GetLoaderCapabilities reports supported formats and limits (for client UIs).
+	GetLoaderCapabilities(ctx context.Context, in *GetLoaderCapabilitiesRequest, opts ...grpc.CallOption) (*GetLoaderCapabilitiesResponse, error)
+}
+
+type loaderServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewLoaderServiceClient(cc grpc.ClientConnInterface) LoaderServiceClient {
+	return &loaderServiceClient{cc}
+}
+
+func (c *loaderServiceClient) LoadOntology(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[LoadOntologyRequest, LoadOntologyResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &LoaderService_ServiceDesc.Streams[0], LoaderService_LoadOntology_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[LoadOntologyRequest, LoadOntologyResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type LoaderService_LoadOntologyClient = grpc.ClientStreamingClient[LoadOntologyRequest, LoadOntologyResponse]
+
+func (c *loaderServiceClient) LoadData(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[LoadDataRequest, LoadDataResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &LoaderService_ServiceDesc.Streams[1], LoaderService_LoadData_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[LoadDataRequest, LoadDataResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type LoaderService_LoadDataClient = grpc.ClientStreamingClient[LoadDataRequest, LoadDataResponse]
+
+func (c *loaderServiceClient) LoadCsv(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[LoadCsvRequest, LoadCsvResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &LoaderService_ServiceDesc.Streams[2], LoaderService_LoadCsv_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[LoadCsvRequest, LoadCsvResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type LoaderService_LoadCsvClient = grpc.ClientStreamingClient[LoadCsvRequest, LoadCsvResponse]
+
+func (c *loaderServiceClient) LoadPrefix(ctx context.Context, in *LoadPrefixRequest, opts ...grpc.CallOption) (*LoadPrefixResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LoadPrefixResponse)
+	err := c.cc.Invoke(ctx, LoaderService_LoadPrefix_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *loaderServiceClient) GetLoaderCapabilities(ctx context.Context, in *GetLoaderCapabilitiesRequest, opts ...grpc.CallOption) (*GetLoaderCapabilitiesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetLoaderCapabilitiesResponse)
+	err := c.cc.Invoke(ctx, LoaderService_GetLoaderCapabilities_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// LoaderServiceServer is the server API for LoaderService service.
+// All implementations must embed UnimplementedLoaderServiceServer
+// for forward compatibility.
+//
+// LoaderService lets a driver load files into a graph by UPLOADING the file's
+// bytes from the client. The file lives on the client machine, not the server,
+// so GQL `LOAD ... FROM '<server-path|url>'` (reachable via QueryService.Gql)
+// cannot see it — these RPCs close that gap.
+//
+// The three file RPCs are client-streaming: the FIRST message carries the typed
+// header, every LATER message carries a raw byte chunk of the file; the server
+// replies once with typed counts after consuming the stream (client calls
+// CloseAndRecv). Each header also has an optional `source`: when set with no
+// chunks, the server loads from that server-reachable path/URL instead, for
+// parity with the GQL form.
+//
+// `format` is REQUIRED for uploads (a raw stream has no extension/content-type
+// to auto-detect from). Uploads are size-capped (see
+// GetLoaderCapabilities.max_upload_bytes) and require the same RBAC as the GQL
+// LOAD: manage-ontology for ontology/data/prefix; restore + insert for CSV.
+type LoaderServiceServer interface {
+	// LoadOntology uploads and loads an ontology schema (OWL/RDF-XML/Turtle/N-Triples).
+	LoadOntology(grpc.ClientStreamingServer[LoadOntologyRequest, LoadOntologyResponse]) error
+	// LoadData uploads and loads RDF instance data (Turtle/N-Triples) as nodes/edges.
+	LoadData(grpc.ClientStreamingServer[LoadDataRequest, LoadDataResponse]) error
+	// LoadCsv uploads and imports CSV rows as nodes or edges.
+	LoadCsv(grpc.ClientStreamingServer[LoadCsvRequest, LoadCsvResponse]) error
+	// LoadPrefix registers namespace prefixes (single, standard set, or bulk-from-URL).
+	LoadPrefix(context.Context, *LoadPrefixRequest) (*LoadPrefixResponse, error)
+	// GetLoaderCapabilities reports supported formats and limits (for client UIs).
+	GetLoaderCapabilities(context.Context, *GetLoaderCapabilitiesRequest) (*GetLoaderCapabilitiesResponse, error)
+	mustEmbedUnimplementedLoaderServiceServer()
+}
+
+// UnimplementedLoaderServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedLoaderServiceServer struct{}
+
+func (UnimplementedLoaderServiceServer) LoadOntology(grpc.ClientStreamingServer[LoadOntologyRequest, LoadOntologyResponse]) error {
+	return status.Error(codes.Unimplemented, "method LoadOntology not implemented")
+}
+func (UnimplementedLoaderServiceServer) LoadData(grpc.ClientStreamingServer[LoadDataRequest, LoadDataResponse]) error {
+	return status.Error(codes.Unimplemented, "method LoadData not implemented")
+}
+func (UnimplementedLoaderServiceServer) LoadCsv(grpc.ClientStreamingServer[LoadCsvRequest, LoadCsvResponse]) error {
+	return status.Error(codes.Unimplemented, "method LoadCsv not implemented")
+}
+func (UnimplementedLoaderServiceServer) LoadPrefix(context.Context, *LoadPrefixRequest) (*LoadPrefixResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method LoadPrefix not implemented")
+}
+func (UnimplementedLoaderServiceServer) GetLoaderCapabilities(context.Context, *GetLoaderCapabilitiesRequest) (*GetLoaderCapabilitiesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetLoaderCapabilities not implemented")
+}
+func (UnimplementedLoaderServiceServer) mustEmbedUnimplementedLoaderServiceServer() {}
+func (UnimplementedLoaderServiceServer) testEmbeddedByValue()                       {}
+
+// UnsafeLoaderServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to LoaderServiceServer will
+// result in compilation errors.
+type UnsafeLoaderServiceServer interface {
+	mustEmbedUnimplementedLoaderServiceServer()
+}
+
+func RegisterLoaderServiceServer(s grpc.ServiceRegistrar, srv LoaderServiceServer) {
+	// If the following call panics, it indicates UnimplementedLoaderServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&LoaderService_ServiceDesc, srv)
+}
+
+func _LoaderService_LoadOntology_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(LoaderServiceServer).LoadOntology(&grpc.GenericServerStream[LoadOntologyRequest, LoadOntologyResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type LoaderService_LoadOntologyServer = grpc.ClientStreamingServer[LoadOntologyRequest, LoadOntologyResponse]
+
+func _LoaderService_LoadData_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(LoaderServiceServer).LoadData(&grpc.GenericServerStream[LoadDataRequest, LoadDataResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type LoaderService_LoadDataServer = grpc.ClientStreamingServer[LoadDataRequest, LoadDataResponse]
+
+func _LoaderService_LoadCsv_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(LoaderServiceServer).LoadCsv(&grpc.GenericServerStream[LoadCsvRequest, LoadCsvResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type LoaderService_LoadCsvServer = grpc.ClientStreamingServer[LoadCsvRequest, LoadCsvResponse]
+
+func _LoaderService_LoadPrefix_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LoadPrefixRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LoaderServiceServer).LoadPrefix(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LoaderService_LoadPrefix_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LoaderServiceServer).LoadPrefix(ctx, req.(*LoadPrefixRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LoaderService_GetLoaderCapabilities_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetLoaderCapabilitiesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LoaderServiceServer).GetLoaderCapabilities(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LoaderService_GetLoaderCapabilities_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LoaderServiceServer).GetLoaderCapabilities(ctx, req.(*GetLoaderCapabilitiesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// LoaderService_ServiceDesc is the grpc.ServiceDesc for LoaderService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var LoaderService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "gqldb.LoaderService",
+	HandlerType: (*LoaderServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "LoadPrefix",
+			Handler:    _LoaderService_LoadPrefix_Handler,
+		},
+		{
+			MethodName: "GetLoaderCapabilities",
+			Handler:    _LoaderService_GetLoaderCapabilities_Handler,
+		},
+	},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "LoadOntology",
+			Handler:       _LoaderService_LoadOntology_Handler,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "LoadData",
+			Handler:       _LoaderService_LoadData_Handler,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "LoadCsv",
+			Handler:       _LoaderService_LoadCsv_Handler,
+			ClientStreams: true,
+		},
+	},
+	Metadata: "gqldb.proto",
+}

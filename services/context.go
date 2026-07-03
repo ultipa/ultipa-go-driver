@@ -19,6 +19,7 @@ type ServiceContext struct {
 	HealthClient      pb.HealthClient
 	AdminClient       pb.AdminServiceClient
 	BulkImportClient  pb.BulkImportServiceClient
+	LoaderClient      pb.LoaderServiceClient
 
 	// Session and config accessors
 	GetSessionID         func() uint64

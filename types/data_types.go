@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -73,16 +74,42 @@ type LocalDateTime struct {
 	Time time.Time
 }
 
-// String returns the local date-time formatted without timezone (e.g., "2024-06-15T14:30:00").
+// String returns the canonical form, e.g. "2026-07-01 15:40:12.153"
+// (matches TypedValue.FormatValue(); trailing fractional zeros trimmed).
 func (ldt LocalDateTime) String() string {
 	t := ldt.Time.UTC()
-	if t.Nanosecond() != 0 {
-		return fmt.Sprintf("%04d-%02d-%02dT%02d:%02d:%02d.%09d",
-			t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond())
-	}
-	return fmt.Sprintf("%04d-%02d-%02dT%02d:%02d:%02d",
-		t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second())
+	return formatDateTime(t.Year(), int(t.Month()), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond())
 }
+
+// String returns the canonical form with offset, e.g. "2026-07-01 15:40:12.153+08:00".
+func (zdt ZonedDateTime) String() string {
+	t := zdt.Time // FixedZone wall-clock
+	return formatDateTime(t.Year(), int(t.Month()), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond()) +
+		formatOffset(zdt.OffsetMinutes)
+}
+
+// String returns the date as "2026-07-01".
+func (d GqldbDate) String() string {
+	return fmt.Sprintf("%04d-%02d-%02d", d.Year, d.Month, d.Day)
+}
+
+// String returns the local time, e.g. "15:40:12.153".
+func (lt LocalTime) String() string {
+	return formatTime(lt.Hour, lt.Minute, lt.Second, lt.Nanosecond)
+}
+
+// String returns the time with offset, e.g. "15:40:12.153+08:00".
+func (zt ZonedTime) String() string {
+	return formatTime(zt.Hour, zt.Minute, zt.Second, zt.Nanosecond) + formatOffset(zt.OffsetMinutes)
+}
+
+// MarshalJSON renders each temporal type as its canonical string (not a struct),
+// e.g. "2026-07-01 15:40:12.153", matching String().
+func (ldt LocalDateTime) MarshalJSON() ([]byte, error) { return json.Marshal(ldt.String()) }
+func (zdt ZonedDateTime) MarshalJSON() ([]byte, error) { return json.Marshal(zdt.String()) }
+func (d GqldbDate) MarshalJSON() ([]byte, error)       { return json.Marshal(d.String()) }
+func (lt LocalTime) MarshalJSON() ([]byte, error)      { return json.Marshal(lt.String()) }
+func (zt ZonedTime) MarshalJSON() ([]byte, error)      { return json.Marshal(zt.String()) }
 
 // ZonedDateTime represents a date-time with timezone offset.
 type ZonedDateTime struct {

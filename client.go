@@ -80,6 +80,7 @@ type Client struct {
 	healthClient      pb.HealthClient
 	adminClient       pb.AdminServiceClient
 	bulkImportClient  pb.BulkImportServiceClient
+	loaderClient      pb.LoaderServiceClient
 
 	// Service layer (delegation)
 	sessionSvc     *services.SessionService
@@ -90,6 +91,7 @@ type Client struct {
 	healthSvc      *services.HealthService
 	adminSvc       *services.AdminService
 	bulkImportSvc  *services.BulkImportService
+	loaderSvc      *services.LoaderService
 }
 
 // NewClient creates a new GQLDB client.
@@ -153,6 +155,7 @@ func (c *Client) initClients(conn *grpc.ClientConn) {
 	c.healthClient = pb.NewHealthClient(conn)
 	c.adminClient = pb.NewAdminServiceClient(conn)
 	c.bulkImportClient = pb.NewBulkImportServiceClient(conn)
+	c.loaderClient = pb.NewLoaderServiceClient(conn)
 
 	// Initialize service context
 	ctx := &services.ServiceContext{
@@ -164,6 +167,7 @@ func (c *Client) initClients(conn *grpc.ClientConn) {
 		HealthClient:       c.healthClient,
 		AdminClient:        c.adminClient,
 		BulkImportClient:   c.bulkImportClient,
+		LoaderClient:       c.loaderClient,
 		GetSessionID:       func() uint64 { return c.sessions.GetSessionID() },
 		GetServerVersion:   func() string { return c.sessions.GetServerVersion() },
 		GetClientSessionID: func() string { return c.clientSessionID },
@@ -183,6 +187,7 @@ func (c *Client) initClients(conn *grpc.ClientConn) {
 	c.healthSvc = services.NewHealthService(ctx)
 	c.adminSvc = services.NewAdminService(ctx)
 	c.bulkImportSvc = services.NewBulkImportService(ctx)
+	c.loaderSvc = services.NewLoaderService(ctx)
 }
 
 // Close closes the client and all connections.

@@ -35,6 +35,7 @@ type CheckpointResult struct {
 type EndBulkImportResult struct {
 	Success      bool
 	TotalRecords int64
+	DurationMs   int64
 	Message      string
 }
 

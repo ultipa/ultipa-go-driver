@@ -227,13 +227,13 @@ func TestDeepDDLLifecycle(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 		cfg := &gqldb.QueryConfig{GraphName: g}
 		testClient.Gql(ctx, "ALTER GRAPH "+g+" ADD NODE { CstTest ({name STRING, age INT64}) }", cfg)
-		testClient.Gql(ctx, "ALTER NODE CstTest ADD CONSTRAINT NOT NULL ON name", cfg)
+		testClient.Gql(ctx, "CREATE CONSTRAINT nn_node_csttest_name FOR (n:CstTest) REQUIRE n.name IS NOT NULL", cfg)
 		testClient.Gql(ctx, "INSERT (:CstTest {name: 'valid', age: 30})", cfg)
 		_, err := testClient.Gql(ctx, "INSERT (:CstTest {age: 25})", cfg)
 		if err == nil {
 			t.Fatal("Expected error for NOT NULL violation")
 		}
-		testClient.Gql(ctx, "ALTER NODE CstTest DROP CONSTRAINT NOT NULL ON name", cfg)
+		testClient.Gql(ctx, "DROP CONSTRAINT nn_node_csttest_name", cfg)
 		testClient.Gql(ctx, "INSERT (:CstTest {age: 20})", cfg)
 		testClient.UseGraph(ctx, "default")
 		testClient.DropGraph(ctx, g, true)
@@ -246,13 +246,13 @@ func TestDeepDDLLifecycle(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 		cfg := &gqldb.QueryConfig{GraphName: g}
 		testClient.Gql(ctx, "ALTER GRAPH "+g+" ADD NODE { UniTest ({email STRING}) }", cfg)
-		testClient.Gql(ctx, "ALTER NODE UniTest ADD CONSTRAINT UNIQUE ON email", cfg)
+		testClient.Gql(ctx, "CREATE CONSTRAINT uq_node_unitest_email FOR (n:UniTest) REQUIRE n.email IS UNIQUE", cfg)
 		testClient.Gql(ctx, "INSERT (:UniTest {email: 'a@test.com'})", cfg)
 		_, err := testClient.Gql(ctx, "INSERT (:UniTest {email: 'a@test.com'})", cfg)
 		if err == nil {
 			t.Fatal("Expected error for UNIQUE violation")
 		}
-		testClient.Gql(ctx, "ALTER NODE UniTest DROP CONSTRAINT UNIQUE ON email", cfg)
+		testClient.Gql(ctx, "DROP CONSTRAINT uq_node_unitest_email", cfg)
 		testClient.Gql(ctx, "INSERT (:UniTest {email: 'a@test.com'})", cfg)
 		testClient.UseGraph(ctx, "default")
 		testClient.DropGraph(ctx, g, true)

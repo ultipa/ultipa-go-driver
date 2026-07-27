@@ -2,6 +2,7 @@ package unit
 
 import (
 	"encoding/binary"
+	"math/big"
 	"testing"
 	"time"
 
@@ -525,6 +526,28 @@ func TestTypedValueDecimal(t *testing.T) {
 
 	if dec.Value != input.Value {
 		t.Errorf("expected %v, got %v", input.Value, dec.Value)
+	}
+}
+
+func TestTypedValueBigFloatDecimal(t *testing.T) {
+	// A native *big.Float maps to the high-precision DECIMAL type (not a lossy
+	// float64), mirroring the other SDKs' native-decimal support.
+	f, _, err := big.ParseFloat("123.456", 10, 200, big.ToNearestEven)
+	if err != nil {
+		t.Fatalf("ParseFloat failed: %v", err)
+	}
+
+	tv, err := gqldb.NewTypedValue(f)
+	if err != nil {
+		t.Fatalf("NewTypedValue failed: %v", err)
+	}
+
+	if tv.Type != gqldb.PropertyTypeDecimal {
+		t.Errorf("expected type %v, got %v", gqldb.PropertyTypeDecimal, tv.Type)
+	}
+
+	if got := string(tv.Data); got != "123.456" {
+		t.Errorf("expected data %q, got %q", "123.456", got)
 	}
 }
 

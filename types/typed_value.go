@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/big"
 	"strconv"
 	"time"
 )
@@ -156,6 +157,15 @@ func NewTypedValue(v interface{}) (*TypedValue, error) {
 
 	case Decimal:
 		return &TypedValue{Type: PropertyTypeDecimal, Data: []byte(val.Value)}, nil
+
+	case *big.Float:
+		// *big.Float maps to the high-precision DECIMAL type, not a lossy
+		// float64. Text('f', -1) emits the shortest plain (non-scientific)
+		// decimal that round-trips. Go's stdlib has no native decimal type, so
+		// big.Float is the closest analog — construct it from a string for exact
+		// arbitrary-precision decimals. Mirrors the other SDKs' native-decimal
+		// -> GqldbDecimal mapping.
+		return &TypedValue{Type: PropertyTypeDecimal, Data: []byte(val.Text('f', -1))}, nil
 
 	case LocalDateTime:
 		// LOCAL_DATETIME: 11-byte structured format [year:2][month:1][day:1][hour:1][min:1][sec:1][nanos:4]

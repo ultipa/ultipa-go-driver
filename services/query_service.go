@@ -182,7 +182,7 @@ func (s *QueryService) GqlVia(ctx context.Context, qc pb.QueryServiceClient, que
 			dropped := strings.Trim(strings.TrimSpace(strings.TrimRight(rest, ";")), "`\"'")
 			current := s.ctx.GetDefaultGraph()
 			if dropped != "" && current != "" && dropped == current {
-				s.ctx.SetDefaultGraph("")
+				s.ctx.SetDefaultGraph("default")
 			}
 		}
 	}

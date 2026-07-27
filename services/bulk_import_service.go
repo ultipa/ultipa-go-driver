@@ -46,12 +46,13 @@ type CheckpointResult struct {
 }
 
 // EndBulkImportResult represents end bulk import result.
+// The server returns a single combined record count (no per-type split), plus
+// wall-clock timing; both are surfaced here.
 type EndBulkImportResult struct {
-	Success       bool
-	NodesImported int64
-	EdgesImported int64
-	DurationMs    int64
-	Message       string
+	Success      bool
+	TotalRecords int64
+	DurationMs   int64
+	Message      string
 }
 
 // StartBulkImport starts a bulk import session.
@@ -110,11 +111,10 @@ func (s *BulkImportService) EndBulkImport(ctx context.Context, sessionID string)
 	}
 
 	return &EndBulkImportResult{
-		Success:       resp.Success,
-		NodesImported: 0, // Proto doesn't have NodesImported
-		EdgesImported: 0, // Proto doesn't have EdgesImported
-		DurationMs:    0, // Proto doesn't have DurationMs
-		Message:       resp.Message,
+		Success:      resp.Success,
+		TotalRecords: resp.TotalRecords,
+		DurationMs:   resp.TimeCostNs / 1_000_000, // ns → ms
+		Message:      resp.Message,
 	}, nil
 }
 

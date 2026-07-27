@@ -115,7 +115,14 @@ func TestBulkImportWorkflow(t *testing.T) {
 		t.Errorf("EndBulkImport returned success=false: %s", endResult.Message)
 	}
 
-	t.Logf("Ended bulk import: %d total records", endResult.TotalRecords)
+	// Regression guard (driver_bug_endbulkimport_zero): the server returns the
+	// real combined record count and wall-clock time; the driver must surface
+	// them, not hardcode 0. Previously TotalRecords/DurationMs were dropped.
+	if endResult.TotalRecords <= 0 {
+		t.Errorf("EndBulkImport TotalRecords = %d, want > 0 (inserted %d nodes; driver must not drop the server's count)",
+			endResult.TotalRecords, len(nodes))
+	}
+	t.Logf("Ended bulk import: %d total records, %d ms", endResult.TotalRecords, endResult.DurationMs)
 }
 
 func TestAbortBulkImport(t *testing.T) {

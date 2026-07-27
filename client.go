@@ -1613,7 +1613,8 @@ func (c *Client) EndBulkImport(ctx context.Context, sessionID string) (*EndBulkI
 
 	return &EndBulkImportResult{
 		Success:      result.Success,
-		TotalRecords: result.NodesImported + result.EdgesImported,
+		TotalRecords: result.TotalRecords,
+		DurationMs:   result.DurationMs,
 		Message:      result.Message,
 	}, nil
 }

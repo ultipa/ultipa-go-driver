@@ -103,7 +103,32 @@ func TestCreateGraphOntology(t *testing.T) {
 		t.Errorf("expected graph type ONTOLOGY, got %v", info.GraphType)
 	}
 
-	t.Logf("Created ontology graph: %s", graphName)
+	// Cross-check the raw SHOW GRAPHS graph_mode column (the value GetGraphInfo
+	// parses into GraphType). Proves the engine reports ONTOLOGY at the source,
+	// independent of the enum mapping — catches a silent OPEN downgrade or a
+	// GraphTypeFromMode mis-parse.
+	resp, err := testClient.Gql(ctx, "SHOW GRAPHS", &gqldb.QueryConfig{})
+	if err != nil {
+		t.Fatalf("SHOW GRAPHS failed: %v", err)
+	}
+	var mode string
+	found := false
+	for _, row := range resp.Rows {
+		nameV, _ := resp.GetByName(row, "graph_name")
+		if name, ok := nameV.(string); ok && name == graphName {
+			modeV, _ := resp.GetByName(row, "graph_mode")
+			mode, _ = modeV.(string)
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("graph %q not found in SHOW GRAPHS", graphName)
+	} else if mode != "ONTOLOGY" {
+		t.Errorf("SHOW GRAPHS graph_mode = %q, expected ONTOLOGY", mode)
+	}
+
+	t.Logf("Created ontology graph: %s (graph_mode=%s)", graphName, mode)
 }
 
 func TestCreateGraphEmptyName(t *testing.T) {

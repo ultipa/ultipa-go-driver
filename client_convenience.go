@@ -59,13 +59,13 @@ func labelsContain(labels []string, s string) bool {
 //
 // We must therefore use the brace-less form here.
 func (c *Client) CreateOpenGraph(ctx context.Context, name string, config *QueryConfig) (*Response, error) {
-	return c.Gql(ctx, fmt.Sprintf("CREATE GRAPH %s", name), config)
+	return c.gqlUnchecked(ctx, fmt.Sprintf("CREATE GRAPH %s", name), config)
 }
 
 // CreateClosedGraph creates a new empty closed (schema-enforced) graph.
 // Use CreateNodeLabel/CreateEdgeLabel to add labels after creation.
 func (c *Client) CreateClosedGraph(ctx context.Context, name string, config *QueryConfig) (*Response, error) {
-	return c.Gql(ctx, fmt.Sprintf("CREATE GRAPH %s {}", name), config)
+	return c.gqlUnchecked(ctx, fmt.Sprintf("CREATE GRAPH %s {}", name), config)
 }
 
 // CreateGraphIfNotExist creates a graph if it does not already exist.
@@ -99,13 +99,13 @@ func (c *Client) HasGraph(ctx context.Context, name string) (bool, error) {
 // AlterGraph renames a graph.
 func (c *Client) AlterGraph(ctx context.Context, graphName string, newName string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("ALTER GRAPH %s RENAME TO %s", graphName, newName)
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // Truncate removes all data from a graph while keeping its structure.
 func (c *Client) Truncate(ctx context.Context, graphName string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("TRUNCATE GRAPH %s", graphName)
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // =============================================================================
@@ -115,7 +115,7 @@ func (c *Client) Truncate(ctx context.Context, graphName string, config *QueryCo
 // ShowLabels returns all labels (node and edge) in the current graph.
 func (c *Client) ShowLabels(ctx context.Context, config *QueryConfig) ([]types.LabelInfo, error) {
 	gql := "SHOW LABELS"
-	resp, err := c.Gql(ctx, gql, config)
+	resp, err := c.gqlUnchecked(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +125,7 @@ func (c *Client) ShowLabels(ctx context.Context, config *QueryConfig) ([]types.L
 // ShowNodeLabels returns all node labels in the current graph.
 func (c *Client) ShowNodeLabels(ctx context.Context, config *QueryConfig) ([]types.LabelInfo, error) {
 	gql := "SHOW NODE LABELS"
-	resp, err := c.Gql(ctx, gql, config)
+	resp, err := c.gqlUnchecked(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func (c *Client) ShowNodeLabels(ctx context.Context, config *QueryConfig) ([]typ
 // ShowEdgeLabels returns all edge labels in the current graph.
 func (c *Client) ShowEdgeLabels(ctx context.Context, config *QueryConfig) ([]types.LabelInfo, error) {
 	gql := "SHOW EDGE LABELS"
-	resp, err := c.Gql(ctx, gql, config)
+	resp, err := c.gqlUnchecked(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +145,7 @@ func (c *Client) ShowEdgeLabels(ctx context.Context, config *QueryConfig) ([]typ
 // ShowNodeTypes returns all node types with their properties.
 func (c *Client) ShowNodeTypes(ctx context.Context, config *QueryConfig) ([]types.NodeTypeInfo, error) {
 	gql := "SHOW NODE TYPES"
-	resp, err := c.Gql(ctx, gql, config)
+	resp, err := c.gqlUnchecked(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +155,7 @@ func (c *Client) ShowNodeTypes(ctx context.Context, config *QueryConfig) ([]type
 // ShowEdgeTypes returns all edge types with their properties.
 func (c *Client) ShowEdgeTypes(ctx context.Context, config *QueryConfig) ([]types.EdgeTypeInfo, error) {
 	gql := "SHOW EDGE TYPES"
-	resp, err := c.Gql(ctx, gql, config)
+	resp, err := c.gqlUnchecked(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -217,7 +217,7 @@ func (c *Client) CreateNodeLabel(ctx context.Context, name string, props []types
 	targetGraph := c.resolveTargetGraph(config)
 	propStr := buildPropertyDefString(props)
 	gql := fmt.Sprintf("ALTER GRAPH %s ADD NODE { %s (%s) }", targetGraph, quoteLabel(name), propStr)
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // CreateEdgeLabel creates an edge label in the current graph (closed graph).
@@ -228,14 +228,14 @@ func (c *Client) CreateEdgeLabel(ctx context.Context, name string, props []types
 	targetGraph := c.resolveTargetGraph(config)
 	propStr := buildPropertyDefString(props)
 	gql := fmt.Sprintf("ALTER GRAPH %s ADD EDGE { %s ()-[%s]->() }", targetGraph, quoteLabel(name), propStr)
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // DropNodeLabel drops a node label from the current graph (closed graph).
 func (c *Client) DropNodeLabel(ctx context.Context, name string, config *QueryConfig) (*Response, error) {
 	targetGraph := c.resolveTargetGraph(config)
 	gql := fmt.Sprintf("ALTER GRAPH %s DROP NODE %s", targetGraph, quoteLabel(name))
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // DropEdgeLabel drops one or more edge labels from the current graph (closed graph).
@@ -243,7 +243,7 @@ func (c *Client) DropNodeLabel(ctx context.Context, name string, config *QueryCo
 func (c *Client) DropEdgeLabel(ctx context.Context, config *QueryConfig, names ...string) (*Response, error) {
 	targetGraph := c.resolveTargetGraph(config)
 	gql := fmt.Sprintf("ALTER GRAPH %s DROP EDGE %s", targetGraph, quoteLabels(names))
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // CreateLabelIfNotExist creates a label if it does not already exist.
@@ -276,18 +276,18 @@ func (c *Client) CreateLabelIfNotExist(ctx context.Context, nodeOrEdge types.DBT
 // AlterNodeLabel renames a node label.
 func (c *Client) AlterNodeLabel(ctx context.Context, oldName string, newName string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("ALTER NODE %s RENAME TO %s", quoteLabel(oldName), quoteLabel(newName))
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // AlterEdgeLabel renames an edge label.
 func (c *Client) AlterEdgeLabel(ctx context.Context, oldName string, newName string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("ALTER EDGE %s RENAME TO %s", quoteLabel(oldName), quoteLabel(newName))
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // ShowAlgos returns all available algorithms.
 func (c *Client) ShowAlgos(ctx context.Context, config *QueryConfig) ([]types.AlgoInfo, error) {
-	resp, err := c.Gql(ctx, "SHOW ALGOS", config)
+	resp, err := c.gqlUnchecked(ctx, "SHOW ALGOS", config)
 	if err != nil {
 		return nil, err
 	}
@@ -370,14 +370,14 @@ func (c *Client) CreateProperty(ctx context.Context, nodeOrEdge types.DBType, la
 func (c *Client) CreateNodeProperty(ctx context.Context, labelName string, props []types.PropertyDef, config *QueryConfig) (*Response, error) {
 	propStr := buildPropertyDefString(props)
 	gql := fmt.Sprintf("ALTER NODE %s ADD PROPERTY %s", quoteLabel(labelName), propStr)
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // CreateEdgeProperty adds properties to an edge label.
 func (c *Client) CreateEdgeProperty(ctx context.Context, labelName string, props []types.PropertyDef, config *QueryConfig) (*Response, error) {
 	propStr := buildPropertyDefString(props)
 	gql := fmt.Sprintf("ALTER EDGE %s ADD PROPERTY %s", quoteLabel(labelName), propStr)
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // DropProperty drops properties from a label (node or edge).
@@ -393,14 +393,14 @@ func (c *Client) DropProperty(ctx context.Context, nodeOrEdge types.DBType, labe
 // config is accepted as a parameter before the variadic propNames; pass nil for defaults.
 func (c *Client) DropNodeProperty(ctx context.Context, labelName string, config *QueryConfig, propNames ...string) (*Response, error) {
 	gql := fmt.Sprintf("ALTER NODE %s DROP PROPERTY %s", quoteLabel(labelName), quoteLabels(propNames))
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // DropEdgeProperty drops properties from an edge label.
 // config is accepted as a parameter before the variadic propNames; pass nil for defaults.
 func (c *Client) DropEdgeProperty(ctx context.Context, labelName string, config *QueryConfig, propNames ...string) (*Response, error) {
 	gql := fmt.Sprintf("ALTER EDGE %s DROP PROPERTY %s", quoteLabel(labelName), quoteLabels(propNames))
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // CreatePropertyIfNotExist creates properties on a label if they do not already exist.
@@ -468,7 +468,7 @@ func (c *Client) CreateNotNullConstraint(ctx context.Context, nodeOrEdge types.D
 	name := constraintName("nn", nodeOrEdge, labelName, []string{propName})
 	pattern, v := constraintTarget(nodeOrEdge, labelName)
 	gql := fmt.Sprintf("CREATE CONSTRAINT %s FOR %s REQUIRE %s.%s IS NOT NULL", name, pattern, v, quoteLabel(propName))
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // CreateUniqueConstraint creates a UNIQUE constraint on one or more properties.
@@ -485,18 +485,18 @@ func (c *Client) CreateUniqueConstraint(ctx context.Context, nodeOrEdge types.DB
 		requireExpr = "(" + requireExpr + ")"
 	}
 	gql := fmt.Sprintf("CREATE CONSTRAINT %s FOR %s REQUIRE %s IS UNIQUE", name, pattern, requireExpr)
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // DropNotNullConstraint removes a NOT NULL constraint from a property.
 func (c *Client) DropNotNullConstraint(ctx context.Context, nodeOrEdge types.DBType, labelName string, propName string, config *QueryConfig) (*Response, error) {
-	return c.Gql(ctx, "DROP CONSTRAINT "+constraintName("nn", nodeOrEdge, labelName, []string{propName}), config)
+	return c.gqlUnchecked(ctx, "DROP CONSTRAINT "+constraintName("nn", nodeOrEdge, labelName, []string{propName}), config)
 }
 
 // DropUniqueConstraint removes a UNIQUE constraint from one or more properties.
 // config is accepted as a parameter before the variadic propNames; pass nil for defaults.
 func (c *Client) DropUniqueConstraint(ctx context.Context, nodeOrEdge types.DBType, labelName string, config *QueryConfig, propNames ...string) (*Response, error) {
-	return c.Gql(ctx, "DROP CONSTRAINT "+constraintName("uq", nodeOrEdge, labelName, propNames), config)
+	return c.gqlUnchecked(ctx, "DROP CONSTRAINT "+constraintName("uq", nodeOrEdge, labelName, propNames), config)
 }
 
 // =============================================================================
@@ -506,7 +506,7 @@ func (c *Client) DropUniqueConstraint(ctx context.Context, nodeOrEdge types.DBTy
 // ShowIndex returns all indexes in the current graph.
 func (c *Client) ShowIndex(ctx context.Context, config *QueryConfig) ([]types.IndexInfo, error) {
 	gql := "SHOW INDEX"
-	resp, err := c.Gql(ctx, gql, config)
+	resp, err := c.gqlUnchecked(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -516,7 +516,7 @@ func (c *Client) ShowIndex(ctx context.Context, config *QueryConfig) ([]types.In
 // ShowNodeIndex returns all node indexes in the current graph.
 func (c *Client) ShowNodeIndex(ctx context.Context, config *QueryConfig) ([]types.IndexInfo, error) {
 	gql := "SHOW NODE INDEX"
-	resp, err := c.Gql(ctx, gql, config)
+	resp, err := c.gqlUnchecked(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -526,7 +526,7 @@ func (c *Client) ShowNodeIndex(ctx context.Context, config *QueryConfig) ([]type
 // ShowEdgeIndex returns all edge indexes in the current graph.
 func (c *Client) ShowEdgeIndex(ctx context.Context, config *QueryConfig) ([]types.IndexInfo, error) {
 	gql := "SHOW EDGE INDEX"
-	resp, err := c.Gql(ctx, gql, config)
+	resp, err := c.gqlUnchecked(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -538,26 +538,26 @@ func (c *Client) ShowEdgeIndex(ctx context.Context, config *QueryConfig) ([]type
 func (c *Client) CreateNodeIndex(ctx context.Context, indexName string, labelName string, props []types.IndexProperty, config *QueryConfig) (*Response, error) {
 	propStr := buildIndexPropertyString(props)
 	gql := fmt.Sprintf("CREATE INDEX %s ON NODE %s (%s)", indexName, quoteLabel(labelName), propStr)
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // CreateEdgeIndex creates an index on an edge label.
 func (c *Client) CreateEdgeIndex(ctx context.Context, indexName string, labelName string, props []types.IndexProperty, config *QueryConfig) (*Response, error) {
 	propStr := buildIndexPropertyString(props)
 	gql := fmt.Sprintf("CREATE INDEX %s ON EDGE %s (%s)", indexName, quoteLabel(labelName), propStr)
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // DropNodeIndex drops a node index by name.
 func (c *Client) DropNodeIndex(ctx context.Context, indexName string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("DROP NODE INDEX %s", indexName)
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // DropEdgeIndex drops an edge index by name.
 func (c *Client) DropEdgeIndex(ctx context.Context, indexName string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("DROP EDGE INDEX %s", indexName)
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // =============================================================================
@@ -567,7 +567,7 @@ func (c *Client) DropEdgeIndex(ctx context.Context, indexName string, config *Qu
 // ShowFulltext returns all fulltext indexes in the current graph.
 func (c *Client) ShowFulltext(ctx context.Context, config *QueryConfig) ([]types.FulltextInfo, error) {
 	gql := "SHOW FULLTEXT"
-	resp, err := c.Gql(ctx, gql, config)
+	resp, err := c.gqlUnchecked(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -577,7 +577,7 @@ func (c *Client) ShowFulltext(ctx context.Context, config *QueryConfig) ([]types
 // ShowNodeFulltext returns all node fulltext indexes.
 func (c *Client) ShowNodeFulltext(ctx context.Context, config *QueryConfig) ([]types.FulltextInfo, error) {
 	gql := "SHOW NODE FULLTEXT"
-	resp, err := c.Gql(ctx, gql, config)
+	resp, err := c.gqlUnchecked(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -587,7 +587,7 @@ func (c *Client) ShowNodeFulltext(ctx context.Context, config *QueryConfig) ([]t
 // ShowEdgeFulltext returns all edge fulltext indexes.
 func (c *Client) ShowEdgeFulltext(ctx context.Context, config *QueryConfig) ([]types.FulltextInfo, error) {
 	gql := "SHOW EDGE FULLTEXT"
-	resp, err := c.Gql(ctx, gql, config)
+	resp, err := c.gqlUnchecked(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -598,25 +598,25 @@ func (c *Client) ShowEdgeFulltext(ctx context.Context, config *QueryConfig) ([]t
 // GQL: CREATE FULLTEXT name ON NODE Label (prop1, prop2)
 func (c *Client) CreateNodeFulltext(ctx context.Context, indexName string, labelName string, props []string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("CREATE FULLTEXT %s ON NODE %s (%s)", indexName, quoteLabel(labelName), quoteLabels(props))
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // CreateEdgeFulltext creates a fulltext index on an edge label.
 func (c *Client) CreateEdgeFulltext(ctx context.Context, indexName string, labelName string, props []string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("CREATE FULLTEXT %s ON EDGE %s (%s)", indexName, quoteLabel(labelName), quoteLabels(props))
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // DropNodeFulltext drops a node fulltext index by name.
 func (c *Client) DropNodeFulltext(ctx context.Context, indexName string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("DROP NODE FULLTEXT %s", indexName)
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // DropEdgeFulltext drops an edge fulltext index by name.
 func (c *Client) DropEdgeFulltext(ctx context.Context, indexName string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("DROP EDGE FULLTEXT %s", indexName)
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // =============================================================================
@@ -626,7 +626,7 @@ func (c *Client) DropEdgeFulltext(ctx context.Context, indexName string, config 
 // ShowTasks returns all tasks in the current graph.
 func (c *Client) ShowTasks(ctx context.Context, config *QueryConfig) ([]types.TaskInfo, error) {
 	gql := "SHOW TASKS"
-	resp, err := c.Gql(ctx, gql, config)
+	resp, err := c.gqlUnchecked(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -636,13 +636,13 @@ func (c *Client) ShowTasks(ctx context.Context, config *QueryConfig) ([]types.Ta
 // DeleteTask deletes a task by ID.
 func (c *Client) DeleteTask(ctx context.Context, taskId string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("DELETE TASK %s", taskId)
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // StopTask stops a running task by ID.
 func (c *Client) StopTask(ctx context.Context, taskId string, config *QueryConfig) (*Response, error) {
 	gql := fmt.Sprintf("STOP TASK %s", taskId)
-	return c.Gql(ctx, gql, config)
+	return c.gqlUnchecked(ctx, gql, config)
 }
 
 // =============================================================================
@@ -707,7 +707,7 @@ func (c *Client) InsertNodesGql(ctx context.Context, nodes []types.NodeData, con
 
 	insertKeyword := insertKeywordForType(config)
 	gql := insertKeyword + " " + strings.Join(parts, ", ") + " RETURN " + strings.Join(varNames, ", ")
-	return c.Gql(ctx, gql, insertConfigToQueryConfig(config))
+	return c.gqlUnchecked(ctx, gql, insertConfigToQueryConfig(config))
 }
 
 // insertKeywordForType maps an *InsertConfig's InsertType to the GQL
@@ -795,7 +795,7 @@ func (c *Client) InsertEdgesGql(ctx context.Context, edges []types.EdgeData, con
 		gql := fmt.Sprintf(
 			"MATCH (src WHERE src._id = '%s'), (dst WHERE dst._id = '%s') %s (src)-%s->(dst) RETURN %s",
 			edge.FromNodeID, edge.ToNodeID, insertKeyword, edgePart, varName)
-		resp, err := c.Gql(ctx, gql, qc)
+		resp, err := c.gqlUnchecked(ctx, gql, qc)
 		if err != nil {
 			return nil, err
 		}
@@ -822,7 +822,7 @@ func (c *Client) InsertEdgesGql(ctx context.Context, edges []types.EdgeData, con
 
 // Top returns currently running processes (queries).
 func (c *Client) Top(ctx context.Context) ([]types.ProcessInfo, error) {
-	resp, err := c.Gql(ctx, "TOP", nil)
+	resp, err := c.gqlUnchecked(ctx, "TOP", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -832,13 +832,13 @@ func (c *Client) Top(ctx context.Context) ([]types.ProcessInfo, error) {
 // Kill terminates a running query by its query ID.
 func (c *Client) Kill(ctx context.Context, queryId string) (*Response, error) {
 	gql := fmt.Sprintf("KILL '%s'", queryId)
-	return c.Gql(ctx, gql, nil)
+	return c.gqlUnchecked(ctx, gql, nil)
 }
 
 // Stats returns statistics for the current graph using db.stats().
 func (c *Client) Stats(ctx context.Context) (*types.GraphStats, error) {
 	gql := "RETURN db.stats() AS stats"
-	resp, err := c.Gql(ctx, gql, nil)
+	resp, err := c.gqlUnchecked(ctx, gql, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1362,7 +1362,7 @@ const aiYieldCols = "stage, detail, elapsed_ms, tokens_input, tokens_output, tok
 // initial CALL.
 func (c *Client) AiRead(ctx context.Context, prompt string, config *QueryConfig) (*AiReadResult, error) {
 	gql := fmt.Sprintf(`CALL ai.read("%s") YIELD %s`, escapeAiPrompt(prompt), aiYieldCols)
-	resp, err := c.Gql(ctx, gql, config)
+	resp, err := c.gqlUnchecked(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}
@@ -1396,7 +1396,7 @@ func (c *Client) AiRead(ctx context.Context, prompt string, config *QueryConfig)
 // initial CALL.
 func (c *Client) AiGql(ctx context.Context, prompt string, config *QueryConfig) (*AiReadResult, error) {
 	gql := fmt.Sprintf(`CALL ai.gql("%s") YIELD %s`, escapeAiPrompt(prompt), aiYieldCols)
-	resp, err := c.Gql(ctx, gql, config)
+	resp, err := c.gqlUnchecked(ctx, gql, config)
 	if err != nil {
 		return nil, err
 	}

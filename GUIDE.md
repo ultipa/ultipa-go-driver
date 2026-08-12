@@ -40,6 +40,42 @@ client, err := gqldb.NewClient(config)
 | PoolSize | Connection pool size | 10 |
 | RetryCount | Retry attempts | 3 |
 | RetryDelay | Retry delay | 100ms |
+| DisableUseGraph | Reject caller GQL that selects/replaces a graph | false |
+
+### Multi-tenant graph pinning
+
+`QueryConfig` graph name is a *per-request override*, not a boundary: a `USE`
+inside caller-supplied GQL beats it and reads another tenant's graph. Enable
+``DisableUseGraph`` to reject query text whose leading keyword is `USE` — before any RPC:
+
+```go
+cfg := gqldb.DefaultConfig()
+cfg.DisableUseGraph = true
+
+_, err := client.Gql(ctx, "USE other_tenant\nMATCH (n) RETURN n",
+    &gqldb.QueryConfig{GraphName: "tenant_a"})
+if errors.Is(err, gqldb.ErrGraphSwitchRejected) { /* ... */ }
+```
+
+Rejection raises `*GraphSwitchRejectedError`, matchable with `errors.Is(err, ErrGraphSwitchRejected)`. GQL the driver builds itself (convenience DDL,
+loaders, `useGraph()`) is unaffected.
+
+> **Defense-in-depth, not a security boundary.** It inspects query text and
+> cannot constrain what the connected account may touch; `SHOW GRAPHS` still
+> enumerates every graph. Use a separate database user per tenant with a
+> graph-scoped role for an actual boundary, and pair the flag with read-only
+> requests for user-supplied queries. See the root `GUIDE.md` for the full
+> rationale and the bypass chains this does and does not cover.
+>
+> **Graph-lifecycle DDL is not blocked** — `DROP GRAPH` + `CREATE GRAPH …
+> AS COPY OF …` reaches another tenant with no `USE`. Pair the flag with
+> read-only requests, which the server rejects any write under.
+>
+> **Interim measure.** It covers the forms known when it shipped and
+> silently stops covering any graph-selection syntax the server adds
+> later. Once the server can enforce this, the flag is deprecated and
+> removed at the next major version — plan the move to per-tenant
+> database users alongside enabling it, not after.
 
 ## Queries
 

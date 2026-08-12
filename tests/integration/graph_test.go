@@ -66,7 +66,13 @@ func TestCreateAndDropGraph(t *testing.T) {
 }
 
 // TestCreateGraphClosed tests creating a graph with GraphType CLOSED.
-// server bug open12 #3: CreateGraph with CLOSED type is expected to fail due to a known server bug.
+//
+// This previously asserted that CLOSED creation *fails*, citing "server bug
+// open12 #3". That citation was wrong: open12 #3 is about `graph_type=99`
+// being silently accepted (long since fixed), not about CLOSED. Verified on
+// 6.2.127 that CLOSED works correctly end to end -- the graph reports
+// graph_mode CLOSED, ListGraphs returns GraphTypeClosed, and it rejects
+// undeclared labels -- so this now asserts the real contract.
 func TestCreateGraphClosed(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -74,11 +80,18 @@ func TestCreateGraphClosed(t *testing.T) {
 	graphName := "test_graph_closed_" + time.Now().Format("20060102150405")
 	defer dropTestGraph(graphName)
 
-	err := testClient.CreateGraph(ctx, graphName, gqldb.GraphTypeClosed, "Test closed graph")
+	if err := testClient.CreateGraph(ctx, graphName, gqldb.GraphTypeClosed, "Test closed graph"); err != nil {
+		t.Fatalf("CreateGraph(CLOSED) failed: %v", err)
+	}
+
+	// A CLOSED graph is schema-enforced: an undeclared label must be rejected.
+	// Without this the test would pass just as well against an OPEN graph.
+	_, err := testClient.Gql(ctx, "INSERT (:UndeclaredLabel {x: 1})",
+		&gqldb.QueryConfig{GraphName: graphName})
 	if err == nil {
-		t.Errorf("expected error creating CLOSED graph (server bug open12 #3), but got nil")
+		t.Errorf("CLOSED graph accepted an undeclared label; it behaves as OPEN")
 	} else {
-		t.Logf("Got expected error for CLOSED graph: %v", err)
+		t.Logf("CLOSED graph correctly rejected an undeclared label: %v", err)
 	}
 }
 

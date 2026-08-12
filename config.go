@@ -56,6 +56,31 @@ type Config struct {
 	// NewClient time. Override only when you need a stable id across
 	// reconnects or for cross-channel session continuity.
 	SessionID string
+
+	// DisableUseGraph rejects caller-supplied GQL whose leading
+	// keyword is USE (with or without GRAPH), which switches the session
+	// graph. For multi-tenant callers that pin each
+	// request with QueryConfig.GraphName and embed end-user text in the
+	// query.
+	//
+	// Defense-in-depth only - it inspects query text and cannot constrain
+	// what the connected account may touch, and SHOW GRAPHS still
+	// enumerates every graph. Use per-tenant users + RBAC for an actual
+	// tenant boundary. Applies to Gql/GqlStream/Explain/Profile; GQL the
+	// driver builds itself (convenience DDL, loaders) is unaffected.
+	// Off by default.
+	//
+	// Graph-lifecycle DDL is NOT blocked: `DROP GRAPH <own>` followed by
+	// `CREATE GRAPH <own> AS COPY OF <victim>` reaches another tenant with
+	// no USE at all. Pair this with read_only, under which the server
+	// rejects those writes ([4016]).
+	//
+	// INTERIM MEASURE. It filters query text, so it covers the forms known
+	// when it shipped and silently stops covering any graph-selection
+	// syntax the server adds later. It exists to bridge the gap until the
+	// server can enforce this. Once server-side enforcement is available,
+	// this flag is deprecated and removed at the next major version.
+	DisableUseGraph bool
 }
 
 // DefaultConfig returns a Config with default values.

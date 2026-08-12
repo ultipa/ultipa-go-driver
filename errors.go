@@ -6,6 +6,9 @@ import "errors"
 var (
 	// Configuration errors
 	ErrNoHosts        = errors.New("gqldb: no hosts configured")
+	// ErrGraphSwitchRejected matches any GraphSwitchRejectedError via
+	// errors.Is, regardless of which keyword tripped the guard.
+	ErrGraphSwitchRejected = errors.New("gqldb: query selects or replaces a graph")
 	ErrInvalidTimeout = errors.New("gqldb: invalid timeout value")
 
 	// Connection errors
@@ -76,4 +79,27 @@ func NewError(code int, message string, cause error) *GqldbError {
 		Message: message,
 		Cause:   cause,
 	}
+}
+
+// GraphSwitchRejectedError is returned when a query selects or replaces a
+// graph while Config.DisableUseGraph is enabled.
+//
+// See query_guard.go for what is blocked and why this is defense-in-depth
+// rather than a tenant boundary.
+type GraphSwitchRejectedError struct {
+	// Keyword is the leading keyword phrase that triggered the rejection.
+	Keyword string
+}
+
+func (e *GraphSwitchRejectedError) Error() string {
+	if e.Keyword == "" {
+		return "gqldb: query rejected: it selects or replaces a graph"
+	}
+	return "gqldb: query rejected: leading '" + e.Keyword + "' selects or " +
+		"replaces a graph, and DisableUseGraph is enabled"
+}
+
+// Is lets errors.Is(err, ErrGraphSwitchRejected) match any keyword.
+func (e *GraphSwitchRejectedError) Is(target error) bool {
+	return target == ErrGraphSwitchRejected
 }

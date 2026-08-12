@@ -501,7 +501,34 @@ func (c *Client) Ping(ctx context.Context) (int64, error) {
 // =============================================================================
 
 // Gql executes a GQL query and returns the results.
+//
+// Returns *GraphSwitchRejectedError when Config.DisableUseGraph is
+// enabled and the query selects or replaces a graph.
 func (c *Client) Gql(ctx context.Context, query string, config *QueryConfig) (*Response, error) {
+	if err := c.checkGraphSwitch(query); err != nil {
+		return nil, err
+	}
+	return c.gqlUnchecked(ctx, query, config)
+}
+
+// checkGraphSwitch applies the graph-switch guard to caller-supplied query
+// text. No-op unless Config.DisableUseGraph is set.
+//
+// GQL the driver builds itself bypasses this by calling gqlUnchecked
+// directly - convenience DDL legitimately emits ALTER GRAPH / CREATE GRAPH.
+func (c *Client) checkGraphSwitch(query string) error {
+	if c.config == nil || !c.config.DisableUseGraph {
+		return nil
+	}
+	if keyword := findBlockedKeyword(query); keyword != "" {
+		return &GraphSwitchRejectedError{Keyword: keyword}
+	}
+	return nil
+}
+
+// gqlUnchecked executes GQL, bypassing the graph-switch guard. For
+// driver-authored query text only.
+func (c *Client) gqlUnchecked(ctx context.Context, query string, config *QueryConfig) (*Response, error) {
 	if query == "" {
 		return nil, ErrEmptyQuery
 	}
@@ -536,6 +563,9 @@ func (c *Client) Gql(ctx context.Context, query string, config *QueryConfig) (*R
 
 // GqlStream executes a GQL query and streams the results.
 func (c *Client) GqlStream(ctx context.Context, query string, config *QueryConfig, callback func(*Response) error) error {
+	if err := c.checkGraphSwitch(query); err != nil {
+		return err
+	}
 	if query == "" {
 		return ErrEmptyQuery
 	}
@@ -556,6 +586,9 @@ func (c *Client) GqlStream(ctx context.Context, query string, config *QueryConfi
 
 // Explain returns the execution plan for a query.
 func (c *Client) Explain(ctx context.Context, query string, config *QueryConfig) (string, error) {
+	if err := c.checkGraphSwitch(query); err != nil {
+		return "", err
+	}
 	if query == "" {
 		return "", ErrEmptyQuery
 	}
@@ -576,6 +609,9 @@ func (c *Client) Explain(ctx context.Context, query string, config *QueryConfig)
 
 // Profile executes a query with profiling and returns statistics.
 func (c *Client) Profile(ctx context.Context, query string, config *QueryConfig) (string, error) {
+	if err := c.checkGraphSwitch(query); err != nil {
+		return "", err
+	}
 	if query == "" {
 		return "", ErrEmptyQuery
 	}
@@ -622,7 +658,7 @@ func (c *Client) CreateGraphWithEdgeId(ctx context.Context, name string, graphTy
 		if edgeId == EdgeIdEnabled {
 			state = "ENABLED"
 		}
-		if _, gqlErr := c.Gql(ctx, fmt.Sprintf("ALTER GRAPH %s SET EDGE_ID %s", name, state), nil); gqlErr != nil {
+		if _, gqlErr := c.gqlUnchecked(ctx, fmt.Sprintf("ALTER GRAPH %s SET EDGE_ID %s", name, state), nil); gqlErr != nil {
 			return NewError(0, "alter graph set edge_id failed", gqlErr)
 		}
 	}
@@ -664,7 +700,7 @@ func (c *Client) UseGraph(ctx context.Context, name string) error {
 // graph_type name, and passing through bounded_graph_type when present — so
 // it works against both old and new servers.
 func (c *Client) ListGraphs(ctx context.Context) ([]*GraphInfo, error) {
-	resp, err := c.Gql(ctx, "SHOW GRAPHS", nil)
+	resp, err := c.gqlUnchecked(ctx, "SHOW GRAPHS", nil)
 	if err != nil {
 		return nil, NewError(0, "list graphs failed", err)
 	}
@@ -887,7 +923,7 @@ func (c *Client) WithTransaction(ctx context.Context, graphName string, readOnly
 //
 // Distinct from ListTransactions which uses the legacy gRPC.
 func (c *Client) ShowTransactions(ctx context.Context) ([]*TransactionRow, error) {
-	resp, err := c.Gql(ctx, "SHOW TRANSACTIONS", nil)
+	resp, err := c.gqlUnchecked(ctx, "SHOW TRANSACTIONS", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -920,14 +956,14 @@ func (c *Client) ShowTransactions(ctx context.Context) ([]*TransactionRow, error
 // returned by BeginTransaction.
 func (c *Client) KillTransaction(ctx context.Context, transactionID string) (*Response, error) {
 	escaped := strings.ReplaceAll(transactionID, "'", "''")
-	return c.Gql(ctx, "KILL TRANSACTION '"+escaped+"'", nil)
+	return c.gqlUnchecked(ctx, "KILL TRANSACTION '"+escaped+"'", nil)
 }
 
 // ResetTransactions rolls back every active transaction via
 // `RESET TRANSACTIONS`. Admin-only; intended as an escape hatch when an
 // orphan tx blocks new BEGINs.
 func (c *Client) ResetTransactions(ctx context.Context) (*Response, error) {
-	return c.Gql(ctx, "RESET TRANSACTIONS", nil)
+	return c.gqlUnchecked(ctx, "RESET TRANSACTIONS", nil)
 }
 
 // =============================================================================
@@ -1038,7 +1074,7 @@ func (c *Client) DeleteNodesByIDs(ctx context.Context, nodeIDs []string, config 
 	if cfg.ReturnDeleted {
 		gql += " RETURN n"
 	}
-	return c.Gql(ctx, gql, deleteConfigToQueryConfig(cfg))
+	return c.gqlUnchecked(ctx, gql, deleteConfigToQueryConfig(cfg))
 }
 
 // DeleteNodesByCondition deletes nodes matching labels and/or where.
@@ -1077,7 +1113,7 @@ func (c *Client) DeleteNodesByCondition(ctx context.Context, labels []string, wh
 	if cfg.ReturnDeleted {
 		gql += " RETURN n"
 	}
-	return c.Gql(ctx, gql, deleteConfigToQueryConfig(cfg))
+	return c.gqlUnchecked(ctx, gql, deleteConfigToQueryConfig(cfg))
 }
 
 // DeleteEdgesByIDs deletes edges by id list. Emits 5-column GQL keyed on
@@ -1095,7 +1131,7 @@ func (c *Client) DeleteEdgesByIDs(ctx context.Context, edgeIDs []string, config 
 	if cfg.ReturnDeleted {
 		gql += " RETURN e._id, e._from, e._to, labels(e)[0], properties(e)"
 	}
-	raw, err := c.Gql(ctx, gql, deleteConfigToQueryConfig(cfg))
+	raw, err := c.gqlUnchecked(ctx, gql, deleteConfigToQueryConfig(cfg))
 	if err != nil || !cfg.ReturnDeleted {
 		return raw, err
 	}
@@ -1129,7 +1165,7 @@ func (c *Client) DeleteEdgesByCondition(ctx context.Context, label string, where
 	if cfg.ReturnDeleted {
 		gql += " RETURN e._id, e._from, e._to, labels(e)[0], properties(e)"
 	}
-	raw, err := c.Gql(ctx, gql, deleteConfigToQueryConfig(cfg))
+	raw, err := c.gqlUnchecked(ctx, gql, deleteConfigToQueryConfig(cfg))
 	if err != nil || !cfg.ReturnDeleted {
 		return raw, err
 	}

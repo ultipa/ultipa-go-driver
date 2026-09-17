@@ -4,6 +4,7 @@ import (
 	"context"
 	cryptoRand "crypto/rand"
 	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
 	"sync"
@@ -425,6 +426,7 @@ func (c *Client) reloginActiveHost(ctx context.Context) error {
 	}
 	return nil
 }
+
 // autoReconnect re-logs in with stored credentials and restores the active
 // graph. Single-flight: expiredSessionID is the session id the caller observed
 // before the failing RPC. Under the lock, if another goroutine has already
@@ -555,6 +557,13 @@ func (c *Client) gqlUnchecked(ctx context.Context, query string, config *QueryCo
 		return nil
 	})
 	if err != nil {
+		// A write conflict can arrive from a statement, not only from Commit
+		// -- a MERGE that would have to wait on a key while this transaction
+		// already holds another is refused rather than allowed to deadlock.
+		// Same caller action either way: retry the whole transaction.
+		if IsWriteConflict(err) {
+			return nil, &WriteConflictError{Message: "query failed: " + err.Error(), Cause: err}
+		}
 		return nil, NewError(0, "query failed", err)
 	}
 
@@ -850,6 +859,12 @@ func (c *Client) Commit(ctx context.Context, transactionID uint64) (bool, error)
 	if err != nil {
 		// Clean up local state even if server commit fails
 		_ = c.txManager.Rollback(transactionID)
+		// A refused commit under optimistic concurrency is a normal outcome --
+		// the first committer won and this one must retry. Surfacing it as a
+		// generic GqldbError would make correct programs look broken.
+		if IsWriteConflict(err) {
+			return false, &WriteConflictError{Message: "commit failed: " + err.Error(), Cause: err}
+		}
 		return false, NewError(0, "commit failed", err)
 	}
 
@@ -895,19 +910,72 @@ func (c *Client) ListTransactions(ctx context.Context) ([]*TransactionInfo, erro
 }
 
 // WithTransaction executes a function within a transaction.
+//
+// Equivalent to WithTransactionRetry with a retry budget of 0.
 func (c *Client) WithTransaction(ctx context.Context, graphName string, readOnly bool, fn func(txID uint64) error) error {
-	tx, err := c.BeginTransaction(ctx, graphName, readOnly, c.config.TimeoutSeconds())
-	if err != nil {
-		return err
-	}
+	return c.WithTransactionRetry(ctx, graphName, readOnly, 0, fn)
+}
 
-	if err := fn(tx.ID); err != nil {
-		c.Rollback(ctx, tx.ID)
-		return err
-	}
+// WithTransactionRetry executes a function within a transaction, retrying it
+// up to retryOnConflict times if the transaction loses a write conflict.
+//
+// Retrying is offered, not imposed, because fn is re-run from the start on
+// each attempt and only the caller knows whether that is safe: anything fn
+// does outside the transaction (sending mail, charging a card, appending to a
+// log) happens again. Retries back off exponentially with jitter; the conflict
+// is returned once the budget is spent.
+//
+// A write conflict is the only condition retried -- every other error is
+// returned on the first attempt. In particular server code 3010 (nested BEGIN,
+// rollback of a dead transaction) is a caller mistake and is never retried.
+func (c *Client) WithTransactionRetry(ctx context.Context, graphName string, readOnly bool, retryOnConflict int, fn func(txID uint64) error) error {
+	for attempt := 0; ; attempt++ {
+		tx, err := c.BeginTransaction(ctx, graphName, readOnly, c.config.TimeoutSeconds())
+		if err != nil {
+			return err
+		}
 
-	_, err = c.Commit(ctx, tx.ID)
-	return err
+		err = fn(tx.ID)
+		if err == nil {
+			_, err = c.Commit(ctx, tx.ID)
+			if err == nil {
+				return nil
+			}
+			// Commit already rolled back local state on failure.
+		} else {
+			c.Rollback(ctx, tx.ID)
+		}
+
+		if attempt >= retryOnConflict || !IsWriteConflict(err) {
+			return err
+		}
+		select {
+		case <-time.After(conflictBackoff(attempt + 1)):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
+const (
+	// conflictBackoffBase is the base delay for the first conflict retry.
+	conflictBackoffBase = 5 * time.Millisecond
+	// conflictBackoffMax caps the exponential part, so a high retry count
+	// cannot stall a caller.
+	conflictBackoffMax = 200 * time.Millisecond
+)
+
+// conflictBackoff returns the delay before conflict retry number attempt
+// (1-based): exponential with full jitter.
+//
+// The jitter is not decoration: two clients refused in the same round will
+// retry in lockstep and collide again if they back off by the same amount.
+func conflictBackoff(attempt int) time.Duration {
+	ceiling := conflictBackoffBase << uint(attempt-1)
+	if ceiling > conflictBackoffMax || ceiling <= 0 {
+		ceiling = conflictBackoffMax
+	}
+	return time.Duration(rand.Int63n(int64(ceiling) + 1))
 }
 
 // =============================================================================

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	pb "github.com/ultipa/ultipa-go-driver/v6/proto"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -26,6 +27,13 @@ type frNode struct {
 	// Left false for follower-READ tests, where a follower serves the read locally.
 	followerRejects bool
 	gqlCalls        atomic.Int32
+	// leaderErr, when set, is the leader's answer to Gql: every time, or only
+	// the first time when leaderErrOnce is set.
+	leaderErr     error
+	leaderErrOnce bool
+	leaderErrSent atomic.Bool
+	// followerErr, when set, is a follower's answer to every Gql.
+	followerErr error
 }
 
 func (f *frNode) Login(ctx context.Context, req *pb.LoginRequest) (*pb.LoginResponse, error) {
@@ -36,6 +44,12 @@ func (f *frNode) Gql(ctx context.Context, req *pb.GqlRequest) (*pb.GqlResponse, 
 	f.gqlCalls.Add(1)
 	if f.followerRejects && !f.isLeader {
 		return nil, status.Error(codes.FailedPrecondition, "LEADER_CHANGED leader=raft://leader:7000")
+	}
+	if !f.isLeader && f.followerErr != nil {
+		return nil, f.followerErr
+	}
+	if f.isLeader && f.leaderErr != nil && !(f.leaderErrOnce && f.leaderErrSent.Swap(true)) {
+		return nil, f.leaderErr
 	}
 	return &pb.GqlResponse{}, nil
 }
@@ -51,14 +65,23 @@ func (f *frNode) GetStatus(ctx context.Context, req *pb.HAGetStatusRequest) (*pb
 
 func startFRNode(t *testing.T, n *frNode) string {
 	t.Helper()
+	return startNodeWith(t, func(srv *grpc.Server) {
+		pb.RegisterSessionServiceServer(srv, n)
+		pb.RegisterQueryServiceServer(srv, n)
+		pb.RegisterHAServiceServer(srv, n)
+	})
+}
+
+// startNodeWith starts a gRPC server on a free local port with the services
+// register adds, and returns its address.
+func startNodeWith(t *testing.T, register func(*grpc.Server)) string {
+	t.Helper()
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
 	srv := grpc.NewServer()
-	pb.RegisterSessionServiceServer(srv, n)
-	pb.RegisterQueryServiceServer(srv, n)
-	pb.RegisterHAServiceServer(srv, n)
+	register(srv)
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)
 	return lis.Addr().String()
@@ -201,4 +224,88 @@ func TestProactiveRouting_JumpsToLeaderSkippingFollowers(t *testing.T) {
 	if cfg.Hosts[idx%len(cfg.Hosts)] != la {
 		t.Fatalf("active host should be pinned to the leader %s, got %s", la, cfg.Hosts[idx%len(cfg.Hosts)])
 	}
+}
+
+// Review round 2 of the error-code batch, item 1: a call marked
+// ReadPreferenceFollower that failed on the follower went on to the leader
+// whatever the error, so a write the follower had run (a stale HA status right
+// after a failover: the "follower" is now the leader) reached the servers
+// twice. It goes on to the leader only under the rule every other path
+// follows: the call is read-only outside a transaction, or the follower
+// refused it before running it (executed=false, or LEADER_CHANGED); never when
+// the answer says part of it is stored. Otherwise the follower's error is the
+// answer.
+func TestFollowerRead_FallbackOnlyWhenSafe(t *testing.T) {
+	ctx := context.Background()
+	for _, c := range []struct {
+		name      string
+		followErr error
+		config    *QueryConfig
+		toLeader  bool // the call goes on to the leader
+	}{
+		{"write, 5024 stored", engineError(CodeWritesCommitted),
+			&QueryConfig{ReadPreference: ReadPreferenceFollower}, false},
+		{"write, connection dropped", statusWith(codes.Unavailable, "connection reset by peer", ""),
+			&QueryConfig{ReadPreference: ReadPreferenceFollower}, false},
+		{"write, old server, no detail", statusWith(codes.Internal, "something failed after the write", ""),
+			&QueryConfig{ReadPreference: ReadPreferenceFollower}, false},
+		{"write, detail without executed", statusWith(codes.Internal, "failed", "INTERNAL", "code", "0"),
+			&QueryConfig{ReadPreference: ReadPreferenceFollower}, false},
+		{"write, executed=false from another domain", foreignRefusal(codes.Unauthenticated),
+			&QueryConfig{ReadPreference: ReadPreferenceFollower}, false},
+		{"read-only flag inside a transaction", statusWith(codes.Unavailable, "connection reset by peer", ""),
+			&QueryConfig{ReadPreference: ReadPreferenceFollower, ReadOnly: true, TransactionID: 9}, false},
+		{"write, refused before it ran", expiredBeforeRun,
+			&QueryConfig{ReadPreference: ReadPreferenceFollower}, true},
+		{"write, LEADER_CHANGED", leaderChangedWithDetail(),
+			&QueryConfig{ReadPreference: ReadPreferenceFollower}, true},
+		{"write, old HA marker", statusWith(codes.FailedPrecondition, "LEADER_CHANGED leader=raft://leader:7000", ""),
+			&QueryConfig{ReadPreference: ReadPreferenceFollower}, true},
+		{"read-only, connection dropped", statusWith(codes.Unavailable, "connection reset by peer", ""),
+			&QueryConfig{ReadPreference: ReadPreferenceFollower, ReadOnly: true}, true},
+		{"read-only, 5024", engineError(CodeWritesCommitted),
+			&QueryConfig{ReadPreference: ReadPreferenceFollower, ReadOnly: true}, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			leader := &frNode{id: "leader", isLeader: true, applied: 100}
+			follower := &frNode{id: "follower", applied: 100, followerErr: c.followErr}
+			client := frClient(t, startFRNode(t, leader), startFRNode(t, follower))
+			_, err := client.Gql(ctx, "INSERT (:Audit {note:'one write'})", c.config)
+			if f := follower.gqlCalls.Load(); f != 1 {
+				t.Fatalf("the follower received %d calls, want 1", f)
+			}
+			if c.toLeader {
+				if n := leader.gqlCalls.Load(); n != 1 || err != nil {
+					t.Fatalf("leader calls %d (want 1), err %v (want nil)", n, err)
+				}
+				return
+			}
+			if n := leader.gqlCalls.Load(); n != 0 {
+				t.Fatalf("the call reached the leader too: %d calls after the follower answered %v", n, c.followErr)
+			}
+			if err == nil {
+				t.Fatal("the follower's error was lost")
+			}
+			if st, ok := grpcStatusOf(err); !ok || st.Code() != status.Code(c.followErr) {
+				t.Errorf("error %v, want the follower's status %v", err, status.Code(c.followErr))
+			}
+		})
+	}
+}
+
+// leaderChangedWithDetail is the answer of a follower that has the detail.
+func leaderChangedWithDetail() error {
+	return statusWith(codes.FailedPrecondition, "LEADER_CHANGED leader=raft://leader:7000", ReasonLeaderChanged,
+		"code", "0", "executed", "false")
+}
+
+// foreignRefusal is executed=false in an ErrorInfo of another domain, which
+// the driver must not trust.
+func foreignRefusal(c codes.Code) error {
+	st, err := status.New(c, "refused").WithDetails(&errdetails.ErrorInfo{Reason: "SESSION_EXPIRED", Domain: "proxy.example.com",
+		Metadata: map[string]string{"code": "0", "executed": "false"}})
+	if err != nil {
+		panic(err)
+	}
+	return st.Err()
 }

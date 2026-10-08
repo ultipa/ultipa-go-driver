@@ -19,21 +19,48 @@ type Transaction struct {
 	// legacy uint64 from Login). Always populated by the driver. See
 	// TRANSACTIONS_DRIVER_GUIDE.md §2.0–2.1.
 	ClientSessionID string
-	mu        sync.RWMutex
-	committed bool
-	rolledBack bool
+	mu              sync.RWMutex
+	committed       bool
+	rolledBack      bool
+	// partlyCommitted: the commit answered 5024 (partly_stored): part of the
+	// transaction's changes are stored. Never rolled back, never run again.
+	partlyCommitted bool
+	// signInLost: the sign-in that began the transaction expired; the server
+	// refuses the transaction from any later sign-in. Nothing was committed.
+	signInLost bool
+	warnings   []string
+}
+
+// CommitResult is the server's answer to a commit (Client.CommitWithResult).
+type CommitResult struct {
+	Success bool
+	Message string
+	// Warnings of a commit that stored the transaction's changes and could
+	// not finish something after them: a property index that missed a change
+	// (out of use until ALTER INDEX ... REBUILD), the lookup of edges by _id
+	// (rebuilt at the next open). The commit succeeded: do not run the
+	// transaction again. Empty from a server older than the field (the warnings
+	// are then only in Message). Transaction.Warnings returns them too.
+	Warnings      []string
+	TimeCostNs    int64
+	DiskCostNs    int64
+	ComputeCostNs int64
 }
 
 // TransactionManager manages transactions for the client.
 type TransactionManager struct {
 	transactions map[uint64]*Transaction
-	mu           sync.RWMutex
+	// lost holds the ids of transactions whose sign-in expired, so a later
+	// call naming one is refused without being sent.
+	lost map[uint64]struct{}
+	mu   sync.RWMutex
 }
 
 // NewTransactionManager creates a new transaction manager.
 func NewTransactionManager() *TransactionManager {
 	return &TransactionManager{
 		transactions: make(map[uint64]*Transaction),
+		lost:         make(map[uint64]struct{}),
 	}
 }
 
@@ -71,6 +98,70 @@ func (m *TransactionManager) Commit(txID uint64) error {
 
 	delete(m.transactions, txID)
 	return nil
+}
+
+// CommitWithWarnings marks a transaction as committed and keeps the
+// warnings the server sent with the commit.
+func (m *TransactionManager) CommitWithWarnings(txID uint64, warnings []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	tx, ok := m.transactions[txID]
+	if !ok {
+		return ErrTransactionNotFound
+	}
+
+	tx.mu.Lock()
+	tx.committed = true
+	tx.warnings = append([]string(nil), warnings...)
+	tx.mu.Unlock()
+
+	delete(m.transactions, txID)
+	return nil
+}
+
+// PartlyCommit marks a transaction whose commit stored part of its changes
+// (the server's 5024, partly_stored=true). It is not rolled back: what is
+// stored stays stored.
+func (m *TransactionManager) PartlyCommit(txID uint64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	tx, ok := m.transactions[txID]
+	if !ok {
+		return ErrTransactionNotFound
+	}
+
+	tx.mu.Lock()
+	tx.partlyCommitted = true
+	tx.mu.Unlock()
+
+	delete(m.transactions, txID)
+	return nil
+}
+
+// MarkSignInLost marks a transaction whose sign-in expired: the server refuses
+// it from a new sign-in, and nothing of it was committed. Later calls naming
+// it are refused by the driver (IsSignInLost).
+func (m *TransactionManager) MarkSignInLost(txID uint64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if tx, ok := m.transactions[txID]; ok {
+		tx.mu.Lock()
+		tx.signInLost = true
+		tx.mu.Unlock()
+		delete(m.transactions, txID)
+	}
+	m.lost[txID] = struct{}{}
+}
+
+// IsSignInLost reports whether the transaction was marked by MarkSignInLost.
+func (m *TransactionManager) IsSignInLost(txID uint64) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	_, ok := m.lost[txID]
+	return ok
 }
 
 // Rollback marks a transaction as rolled back.
@@ -143,6 +234,7 @@ func (m *TransactionManager) ClearAll() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.transactions = make(map[uint64]*Transaction)
+	m.lost = make(map[uint64]struct{})
 }
 
 // IsCommitted returns true if the transaction was committed.
@@ -159,11 +251,38 @@ func (tx *Transaction) IsRolledBack() bool {
 	return tx.rolledBack
 }
 
+// IsPartlyCommitted returns true if the commit stored part of the
+// transaction's changes (the server's 5024, partly_stored=true). Such a
+// transaction is not rolled back and must not be run again as it is.
+func (tx *Transaction) IsPartlyCommitted() bool {
+	tx.mu.RLock()
+	defer tx.mu.RUnlock()
+	return tx.partlyCommitted
+}
+
+// IsSignInLost returns true if the sign-in that began the transaction expired.
+// The driver signed in again, but the server refuses the transaction from the
+// new sign-in; none of its changes were committed.
+func (tx *Transaction) IsSignInLost() bool {
+	tx.mu.RLock()
+	defer tx.mu.RUnlock()
+	return tx.signInLost
+}
+
+// Warnings returns the warnings the server sent with the commit: the changes
+// are stored, and something after them could not be finished (an index that
+// missed a change, the lookup of edges by _id rebuilt at the next open).
+func (tx *Transaction) Warnings() []string {
+	tx.mu.RLock()
+	defer tx.mu.RUnlock()
+	return append([]string(nil), tx.warnings...)
+}
+
 // IsActive returns true if the transaction is still active.
 func (tx *Transaction) IsActive() bool {
 	tx.mu.RLock()
 	defer tx.mu.RUnlock()
-	return !tx.committed && !tx.rolledBack
+	return !tx.committed && !tx.rolledBack && !tx.partlyCommitted && !tx.signInLost
 }
 
 // Age returns how long the transaction has been active.

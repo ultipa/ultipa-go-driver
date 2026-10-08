@@ -13,9 +13,14 @@ import (
 )
 
 // newReconnectClient creates a client WITHOUT DefaultGraph to avoid auth error.
+// It connects to GQLDB_HOST when set, as TestMain's client does.
 func newReconnectClient() (*gqldb.Client, error) {
+	host := os.Getenv("GQLDB_HOST")
+	if host == "" {
+		host = authHost
+	}
 	config := gqldb.NewConfigBuilder().
-		Hosts(authHost).
+		Hosts(host).
 		Timeout(30 * time.Second).
 		Build()
 	return gqldb.NewClient(config)

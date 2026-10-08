@@ -439,6 +439,18 @@ type ExportStats struct {
 	EdgesExported int64
 	BytesWritten  int64
 	DurationMs    int64
+
+	// Completeness, from a server that reports it (0 and empty from an older
+	// one): NodesExpected and EdgesExpected are the graph's counts when the
+	// export started (0 when that pass was filtered by label or turned off);
+	// NodesSkipped and EdgesSkipped count stored records that could not be
+	// read and were left out; Warnings explains any gap (a count mismatch,
+	// skipped records) and is empty for a complete export.
+	NodesExpected int64
+	EdgesExpected int64
+	NodesSkipped  int64
+	EdgesSkipped  int64
+	Warnings      []string
 }
 
 // Note: Node, Edge, and Path types are now imported from the types package

@@ -94,6 +94,9 @@ func (p *ConnectionPool) createConnection(host string) (*Connection, error) {
 		grpc.MaxCallRecvMsgSize(p.config.MaxRecvSize),
 	))
 
+	// Every call says which driver sends it (ClientHeader).
+	opts = append(opts, clientHeaderDialOptions()...)
+
 	// Set keepalive parameters
 	opts = append(opts, grpc.WithKeepaliveParams(keepalive.ClientParameters{
 		Time:                30 * time.Second,
@@ -119,6 +122,15 @@ func (p *ConnectionPool) createConnection(host string) (*Connection, error) {
 
 // GetConnection returns a healthy connection from the pool.
 func (p *ConnectionPool) GetConnection() (*grpc.ClientConn, error) {
+	conn, err := p.healthyConnection()
+	if err != nil {
+		return nil, err
+	}
+	return conn.conn, nil
+}
+
+// healthyConnection returns a healthy pool entry.
+func (p *ConnectionPool) healthyConnection() (*Connection, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -133,11 +145,48 @@ func (p *ConnectionPool) GetConnection() (*grpc.ClientConn, error) {
 		conn.mu.RUnlock()
 
 		if healthy {
-			return conn.conn, nil
+			return conn, nil
 		}
 	}
 
 	return nil, ErrNoConnection
+}
+
+// currentConn returns the pool's connection to host as the pool holds it now,
+// or nil when the pool has none.
+func (p *ConnectionPool) currentConn(host string) *grpc.ClientConn {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if conn, ok := p.connections[host]; ok {
+		return conn.conn
+	}
+	return nil
+}
+
+// hostConn sends each call over the pool's connection to one host as the pool
+// holds it when the call starts. The pool replaces that connection when its
+// health check finds it failing and on ForceReconnectAll; service clients
+// built on a hostConn send their next call over the new connection, rather
+// than staying on the one the pool let go of until the next Login.
+type hostConn struct {
+	pool *ConnectionPool
+	host string
+}
+
+func (h *hostConn) Invoke(ctx context.Context, method string, args, reply interface{}, opts ...grpc.CallOption) error {
+	cc := h.pool.currentConn(h.host)
+	if cc == nil {
+		return ErrNoConnection
+	}
+	return cc.Invoke(ctx, method, args, reply, opts...)
+}
+
+func (h *hostConn) NewStream(ctx context.Context, desc *grpc.StreamDesc, method string, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+	cc := h.pool.currentConn(h.host)
+	if cc == nil {
+		return nil, ErrNoConnection
+	}
+	return cc.NewStream(ctx, desc, method, opts...)
 }
 
 // GetConnectionForHost returns a connection to a specific host.
@@ -266,11 +315,10 @@ func (p *ConnectionPool) ForceReconnectAll() {
 
 // reconnect replaces the pool's channel for host with a fresh one.
 //
-// Critically, this does NOT close the old channel.  In-flight RPCs
-// hold their own reference to it and continue to completion on that
-// channel; the Go runtime's reference counting (via *grpc.ClientConn
-// finalizers) closes the old channel only after every in-flight RPC
-// has returned.
+// Critically, this does NOT close the old channel, so calls still running
+// on it finish there; the next call goes over the new one (hostConn).
+// Nothing closes the old channel later either: grpc-go has no finalizer
+// for a *grpc.ClientConn, so it stays open until the process ends.
 //
 // Earlier versions closed the old channel synchronously here, which
 // cancelled every pending RPC with a "Channel closed!"-style error.
@@ -289,18 +337,16 @@ func (p *ConnectionPool) reconnect(host string) {
 	}
 
 	// Overwrite the pool entry.  The old Connection is now unreferenced
-	// by the pool; in-flight RPCs still hold its *grpc.ClientConn alive
-	// via their per-RPC bindings.  Once they complete the connection
-	// becomes garbage and gRPC closes it naturally.
+	// by the pool; calls still running on its *grpc.ClientConn finish
+	// there.
 	p.connections[host] = newConn
 }
 
 // Close closes all connections in the pool.
 func (p *ConnectionPool) Close() error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	if p.closed {
+		p.mu.Unlock()
 		return nil
 	}
 
@@ -311,7 +357,11 @@ func (p *ConnectionPool) Close() error {
 	for _, conn := range p.connections {
 		conn.conn.Close()
 	}
+	p.mu.Unlock()
 
+	// Wait for the health check only after letting go of the lock: a tick
+	// that is running takes it to read the pool, and Close waiting for that
+	// tick while holding it never returned.
 	p.wg.Wait()
 	return nil
 }

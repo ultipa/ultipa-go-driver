@@ -273,15 +273,65 @@ type ExportChunk struct {
 	Stats   *ExportStats
 }
 
-// ExportStats contains export statistics.
+// ExportStats contains export statistics, with the server's completeness
+// report (expected and skipped counts, warnings) when it sends one.
 type ExportStats struct {
 	NodesExported int64
 	EdgesExported int64
 	BytesWritten  int64
 	DurationMs    int64
+	NodesExpected int64
+	EdgesExpected int64
+	NodesSkipped  int64
+	EdgesSkipped  int64
+	Warnings      []string
 }
 
 // Export exports graph data in JSON Lines format (streaming).
+
+// incompleteUTF8Tail reports how many trailing bytes of data begin a UTF-8
+// character that is not all here yet; 0 when data ends on a character boundary.
+//
+// The export stream is split by size, not by character, so a chunk can end in
+// the middle of a multi-byte character. A caller who turns one chunk into a
+// string on its own then gets U+FFFD where the character was — Go's string
+// conversion substitutes rather than complains. The stream loop uses this to
+// hold those bytes back and put them at the front of the next chunk, which
+// leaves every chunk decodable on its own and their concatenation unchanged.
+//
+// A lead byte is 0xxxxxxx (one byte) or 11xxxxxx (two to four); 10xxxxxx is a
+// continuation, and at most three can be outstanding.
+func incompleteUTF8Tail(data []byte) int {
+	limit := len(data)
+	if limit > 4 {
+		limit = 4
+	}
+	for back := 1; back <= limit; back++ {
+		b := data[len(data)-back]
+		if b&0xC0 == 0x80 {
+			continue // a continuation byte; keep walking back
+		}
+		var needed int
+		switch {
+		case b < 0x80:
+			needed = 1
+		case b >= 0xF0:
+			needed = 4
+		case b >= 0xE0:
+			needed = 3
+		case b >= 0xC0:
+			needed = 2
+		default:
+			return 0 // not a lead byte either: malformed, leave it
+		}
+		if back < needed {
+			return back
+		}
+		return 0
+	}
+	return 0
+}
+
 func (s *DataService) Export(ctx context.Context, config *ExportConfig, callback func(*ExportChunk) error) error {
 	ctx = s.ctx.WithSessionMetadata(ctx)
 
@@ -300,6 +350,10 @@ func (s *DataService) Export(ctx context.Context, config *ExportConfig, callback
 		return err
 	}
 
+	// Bytes held back from the previous chunk: the stream is split by size, so
+	// a chunk can end mid-character. They go at the front of the next one.
+	var carry []byte
+
 	for {
 		resp, err := stream.Recv()
 		if err != nil {
@@ -309,8 +363,23 @@ func (s *DataService) Export(ctx context.Context, config *ExportConfig, callback
 			return err
 		}
 
+		data := resp.Data
+		if len(carry) > 0 {
+			data = append(append([]byte(nil), carry...), data...)
+			carry = nil
+		}
+		if !resp.IsFinal {
+			// On the final chunk nothing is held back: if the stream really
+			// ended mid-character the data is malformed, and handing it over
+			// beats swallowing it.
+			if held := incompleteUTF8Tail(data); held > 0 {
+				carry = append([]byte(nil), data[len(data)-held:]...)
+				data = data[:len(data)-held]
+			}
+		}
+
 		chunk := &ExportChunk{
-			Data:    resp.Data,
+			Data:    data,
 			IsFinal: resp.IsFinal,
 		}
 
@@ -321,6 +390,11 @@ func (s *DataService) Export(ctx context.Context, config *ExportConfig, callback
 				EdgesExported: resp.Stats.EdgesExported,
 				BytesWritten:  resp.Stats.BytesWritten,
 				DurationMs:    resp.Stats.DurationMs,
+				NodesExpected: resp.Stats.NodesExpected,
+				EdgesExpected: resp.Stats.EdgesExpected,
+				NodesSkipped:  resp.Stats.NodesSkipped,
+				EdgesSkipped:  resp.Stats.EdgesSkipped,
+				Warnings:      resp.Stats.Warnings,
 			}
 		}
 

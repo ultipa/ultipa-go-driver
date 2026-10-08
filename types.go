@@ -129,6 +129,19 @@ type CheckpointResult = types.CheckpointResult
 type EndBulkImportResult = types.EndBulkImportResult
 type AbortBulkImportResult = types.AbortBulkImportResult
 type BulkImportStatus = types.BulkImportStatus
+type BulkImportState = types.BulkImportState
+type BulkImportProgress = types.BulkImportProgress
+
+// Bulk import states (see BulkImportState).
+const (
+	BulkImportStateUnspecified = types.BulkImportStateUnspecified
+	BulkImportStateActive      = types.BulkImportStateActive
+	BulkImportStateEnding      = types.BulkImportStateEnding
+	BulkImportStateDiscarding  = types.BulkImportStateDiscarding
+	BulkImportStateEnded       = types.BulkImportStateEnded
+	BulkImportStateAborted     = types.BulkImportStateAborted
+	BulkImportStateFailed      = types.BulkImportStateFailed
+)
 
 // Re-export schema types
 type Schema = types.Schema

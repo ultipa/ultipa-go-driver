@@ -137,20 +137,22 @@ func (c *Client) proactiveLeaderIdx(ctx context.Context) (int, bool) {
 	return -1, false
 }
 
-// tryFollowerRead attempts to run a read on a fresh-enough follower (design §12). Returns
-// (resp, true) on success; (nil, false) when no follower qualifies OR the follower errors — the
-// caller then transparently falls back to the leader path. Follower reads are eventually consistent
-// with a freshness bound, NOT read-your-writes.
-func (c *Client) tryFollowerRead(ctx context.Context, query string, config *QueryConfig) (*Response, bool) {
+// tryFollowerRead attempts to run a read on a fresh-enough follower (design §12). sent is false
+// when no follower qualifies: nothing was sent, and the caller routes the call to the leader. With
+// sent true, err is the follower's answer; the caller sends the call on to the leader only when
+// resendRule.mayGoToAnotherServer allows it (read-only outside a transaction, or refused before
+// running), since a follower that ran it (a stale HA status right after a failover) may have
+// written. Follower reads are eventually consistent with a freshness bound, NOT read-your-writes.
+func (c *Client) tryFollowerRead(ctx context.Context, query string, config *QueryConfig) (resp *Response, sent bool, err error) {
 	conn, _, ok := c.selectFollowerConn(ctx, config.MaxStaleness)
 	if !ok {
-		return nil, false
+		return nil, false, nil
 	}
 	qc := pb.NewQueryServiceClient(conn)
 	svcResp, err := c.querySvc.GqlVia(ctx, qc, query, c.convertToServiceQueryConfig(config),
 		c.newParameterAdapter, c.sessions.GetDefaultGraph, func() int { return c.config.TimeoutSeconds() })
 	if err != nil {
-		return nil, false // transparent fallback to the leader path
+		return nil, true, err
 	}
-	return c.convertFromServiceResponse(svcResp), true
+	return c.convertFromServiceResponse(svcResp), true, nil
 }

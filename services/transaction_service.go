@@ -75,6 +75,30 @@ func (s *TransactionService) BeginTransaction(ctx context.Context, graphName str
 
 // Commit commits a transaction.
 func (s *TransactionService) Commit(ctx context.Context, transactionID uint64) (bool, error) {
+	r, err := s.CommitWithResult(ctx, transactionID)
+	if err != nil {
+		return false, err
+	}
+	return r.Success, nil
+}
+
+// CommitResult is the server's answer to a commit.
+type CommitResult struct {
+	Success bool
+	Message string
+	// Warnings of a commit that stored the transaction's changes and could not
+	// finish something after them (an index that missed a change, the lookup
+	// of edges by _id rebuilt at the next open). The commit succeeded: do not
+	// run the transaction again. Empty from a server older than the field.
+	Warnings      []string
+	TimeCostNs    int64
+	DiskCostNs    int64
+	ComputeCostNs int64
+}
+
+// CommitWithResult commits a transaction and returns the server's answer,
+// warnings included.
+func (s *TransactionService) CommitWithResult(ctx context.Context, transactionID uint64) (*CommitResult, error) {
 	ctx = s.ctx.WithSessionMetadata(ctx)
 
 	req := &pb.CommitRequest{
@@ -84,10 +108,17 @@ func (s *TransactionService) Commit(ctx context.Context, transactionID uint64) (
 
 	resp, err := s.ctx.TransactionClient.Commit(ctx, req)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
-	return resp.Success, nil
+	return &CommitResult{
+		Success:       resp.Success,
+		Message:       resp.Message,
+		Warnings:      append([]string(nil), resp.Warnings...),
+		TimeCostNs:    resp.TimeCostNs,
+		DiskCostNs:    resp.DiskCostNs,
+		ComputeCostNs: resp.ComputeCostNs,
+	}, nil
 }
 
 // Rollback aborts a transaction.

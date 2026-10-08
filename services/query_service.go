@@ -8,8 +8,6 @@ import (
 	"time"
 
 	pb "github.com/ultipa/ultipa-go-driver/v6/proto"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // useGraphRE matches a SINGLE `USE GRAPH <ident>` statement (case-insensitive)
@@ -106,8 +104,9 @@ type Parameter struct {
 // Gql executes a GQL query and returns the results.
 //
 // Falls back to GqlStream + client-side aggregation when the server
-// rejects the result set as too large for non-streaming RPC
-// (RESOURCE_EXHAUSTED with "use streaming API" detail).
+// rejects the result set as too large for non-streaming RPC, and the
+// request is safe to send again (streamFallbackAllowed): read-only, or
+// refused before it ran.
 func (s *QueryService) Gql(ctx context.Context, query string, config *QueryConfig,
 	newParameter func(name string, value interface{}) (*Parameter, error),
 	getDefaultGraph func() string, getTimeout func() int) (*Response, error) {
@@ -131,9 +130,9 @@ func (s *QueryService) GqlVia(ctx context.Context, qc pb.QueryServiceClient, que
 
 	resp, err := qc.Gql(ctx, req)
 	if err != nil {
-		if st, ok := status.FromError(err); ok &&
-			st.Code() == codes.ResourceExhausted &&
-			strings.Contains(st.Message(), "use streaming API") {
+		// A result too large for Gql is fetched through GqlStream, but only
+		// for a request that is safe to send again (streamFallbackAllowed).
+		if streamFallbackAllowed(err, config) {
 			return s.gqlStreamCollect(ctx, query, config, newParameter, getDefaultGraph, getTimeout)
 		}
 		return nil, err
@@ -356,12 +355,19 @@ func (s *QueryService) buildGqlRequest(ctx context.Context, query string, config
 		req.GraphName = getDefaultGraph()
 	}
 
-	// Use context deadline for timeout if not explicitly set
+	// Use context deadline for timeout if not explicitly set. The field is
+	// whole seconds: the time left is rounded UP, so the field is never
+	// smaller than the context's deadline, which travels exactly in the gRPC
+	// deadline header. Rounded down (11.003 s -> 11 s), the field became the
+	// server's own limit, used exactly with no margin, and a write's
+	// "partly stored" answer could arrive after the caller gave up; rounded
+	// up, the caller's deadline binds on the server and a write gets the
+	// margin before it.
 	if req.Timeout == 0 {
 		if deadline, ok := ctx.Deadline(); ok {
 			remaining := time.Until(deadline)
 			if remaining > 0 {
-				req.Timeout = int32(remaining.Seconds())
+				req.Timeout = int32((remaining + time.Second - 1) / time.Second)
 			}
 		}
 	}

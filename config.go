@@ -41,12 +41,16 @@ type Config struct {
 	// Default is 30 seconds.
 	HealthCheckInterval time.Duration
 
-	// RetryCount is the number of times to retry a failed request.
-	// Default is 3.
+	// RetryCount is how many times Gql and GqlStream send a read again when
+	// it fails because a fulltext index is still loading (engine code 5020).
+	// Only a read-only request (QueryConfig.ReadOnly) outside a transaction is
+	// retried, so a retry never repeats a write; no other code is retried, a
+	// write conflict (3011) included. 0 turns the retry off. Default is 3.
 	RetryCount int
 
-	// RetryDelay is the delay between retries.
-	// Default is 100ms.
+	// RetryDelay is the wait before the first such retry. It doubles for each
+	// further retry, up to 2 seconds, and never goes past the context's
+	// deadline. Default is 100ms (100, 200, 400 ms for the default 3 retries).
 	RetryDelay time.Duration
 
 	// SessionID is an optional stable per-client logical session id used
@@ -55,6 +59,16 @@ type Config struct {
 	// Empty string (default) means the driver auto-generates one at
 	// NewClient time. Override only when you need a stable id across
 	// reconnects or for cross-channel session continuity.
+	//
+	// An id set here is never changed by the driver. When the sign-in expires
+	// while a transaction is open, the driver signs in again and reports
+	// TransactionSignInExpiredError for that transaction, but sends nothing
+	// under this id to end it: other clients may share the id and have a live
+	// transaction under it. A server without the session-binding fix keeps
+	// the dead transaction open under the id until it times out; until then a
+	// plain statement sent with the id can join it, and a new
+	// BeginTransaction is refused ([3010]). Leave this empty unless you need
+	// it: a generated id is replaced after such a re-login instead.
 	SessionID string
 
 	// DisableUseGraph rejects caller-supplied GQL whose leading
@@ -81,6 +95,15 @@ type Config struct {
 	// server can enforce this. Once server-side enforcement is available,
 	// this flag is deprecated and removed at the next major version.
 	DisableUseGraph bool
+
+	// BulkImportWaitTimeout bounds how long EndBulkImport and AbortBulkImport
+	// wait, all requests together, for the server to finish the End or the
+	// discard (see BulkImportWaitOptions). 0, the default, means no limit:
+	// they wait until the session reaches a final state (at LSQB SF10 an End
+	// took 64 s and an Abort 19 minutes). The context's deadline, when set,
+	// ends the wait. Past a limit they return a *BulkImportInProgressError:
+	// the work still runs and has not failed.
+	BulkImportWaitTimeout time.Duration
 }
 
 // DefaultConfig returns a Config with default values.
@@ -168,13 +191,22 @@ func (b *ConfigBuilder) HealthCheckInterval(interval time.Duration) *ConfigBuild
 	return b
 }
 
-// RetryCount sets the number of retries for failed requests.
+// RetryCount sets how many times a read-only request is sent again while a
+// fulltext index is loading (engine code 5020). 0 turns it off.
 func (b *ConfigBuilder) RetryCount(count int) *ConfigBuilder {
 	b.config.RetryCount = count
 	return b
 }
 
-// RetryDelay sets the delay between retries.
+// BulkImportWaitTimeout sets how long EndBulkImport and AbortBulkImport wait
+// for the server to finish, all requests together (default 0: no limit).
+func (b *ConfigBuilder) BulkImportWaitTimeout(d time.Duration) *ConfigBuilder {
+	b.config.BulkImportWaitTimeout = d
+	return b
+}
+
+// RetryDelay sets the wait before the first retry of a read-only request; it
+// doubles for each further retry, up to 2 seconds.
 func (b *ConfigBuilder) RetryDelay(delay time.Duration) *ConfigBuilder {
 	b.config.RetryDelay = delay
 	return b
@@ -190,7 +222,7 @@ func (c *Config) Validate() error {
 	if len(c.Hosts) == 0 {
 		return ErrNoHosts
 	}
-	if c.Timeout < 0 {
+	if c.Timeout < 0 || c.BulkImportWaitTimeout < 0 {
 		return ErrInvalidTimeout
 	}
 	if c.MaxRecvSize <= 0 {
